@@ -19,7 +19,7 @@ export NODE_RANK=${NODE_RANK:-0}
 export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE"}
 
 # Training configuration
-CONFIG_PATH=${CONFIG_PATH:-"configs/stage2/training/ImageNet256/DiTDH-S_DINOv2-B.yaml"}
+CONFIG_PATH=${CONFIG_PATH:-"configs/stage2/training/ImageNet256/DiTDH-XL_DINOv2-B.yaml"}
 DATA_PATH=${DATA_PATH:-"/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k"}
 RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2"}
 PRECISION=${PRECISION:-"fp32"}
