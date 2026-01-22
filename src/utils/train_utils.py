@@ -143,20 +143,20 @@ def prepare_dataloader(
     data_path = Path(data_path)
 
     if use_hf_dataset:
-        cache_dir = data_path.parent / f"{data_path.name}_hf_cache"
-        cache_dir.mkdir(exist_ok=True, parents=True)
+        if world_size > 1 and rank == 0:
+            load_dataset(
+                str(data_path),
+                trust_remote_code=True,
+            )
 
-        if world_size > 1 and rank != 0:
+        if world_size > 1:
             dist.barrier()
 
-        hf_dataset = load_dataset(
+        raw_dataset = load_dataset(
             str(data_path),
-            split=split,
             trust_remote_code=True,
         )
-
-        if world_size > 1 and rank == 0:
-            dist.barrier()
+        hf_dataset = raw_dataset[split]
 
         dataset = HFDatasetWrapper(hf_dataset, transform=transform)
     else:
