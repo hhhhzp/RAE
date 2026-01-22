@@ -12,6 +12,7 @@ from pathlib import Path
 from copy import deepcopy
 from datasets import load_dataset
 from .dist_utils import setup_distributed
+import torch.distributed as dist
 
 
 def parse_configs(
@@ -138,26 +139,34 @@ def prepare_dataloader(
     use_hf_dataset: bool = False,
     split: str = 'train',
 ) -> Tuple[DataLoader, DistributedSampler]:
+
+    data_path = Path(data_path)
+
     if use_hf_dataset:
-        # Load Hugging Face dataset with caching
-        cache_dir = Path(data_path) / ".hf_cache"
-        cache_dir.mkdir(exist_ok=True)
+        cache_dir = data_path.parent / f"{data_path.name}_hf_cache"
+        cache_dir.mkdir(exist_ok=True, parents=True)
+
+        if world_size > 1 and rank != 0:
+            dist.barrier()
 
         hf_dataset = load_dataset(
-            str(data_path),
+            "imagefolder",
+            data_dir=str(data_path),
             split=split,
-            trust_remote_code=True,
             cache_dir=str(cache_dir),
-            download_mode="reuse_cache_if_exists",
         )
+
+        if world_size > 1 and rank == 0:
+            dist.barrier()
+
         dataset = HFDatasetWrapper(hf_dataset, transform=transform)
     else:
-        # Use traditional ImageFolder
         dataset = ImageFolder(str(data_path), transform=transform)
 
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True
     )
+
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -166,6 +175,7 @@ def prepare_dataloader(
         pin_memory=True,
         drop_last=True,
     )
+
     return loader, sampler
 
 
