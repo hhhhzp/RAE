@@ -143,8 +143,9 @@ def prepare_dataloader(
     data_path = Path(data_path)
 
     if use_hf_dataset:
-        hf_dataset = load_dataset(data_path, split=split, trust_remote_code=True)
-
+        hf_dataset = load_dataset(
+            data_path, split=split, trust_remote_code=True, num_proc=128
+        )
         dataset = HFDatasetWrapper(hf_dataset, transform=transform)
     else:
         dataset = ImageFolder(str(data_path), transform=transform)
