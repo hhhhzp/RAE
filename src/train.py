@@ -289,6 +289,7 @@ def main():
     state_dict = torch.load(
         '../DeCo/dual_internvit_2b/exp_sem_gen_gate_c256_new_stage2_448px/epoch=0-step=40000.ckpt',
         map_location='cpu',
+        mmap=True,
     )['state_dict']
     # Extract keys with 'model.' prefix
     rae_state_dict = {
