@@ -63,7 +63,7 @@ misc:
 eval:
   eval_interval: 25000 # every 20 epochs
   eval_model: true
-  data_path: 'data/imagenet/val/'
+  data_path: '/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k'
   reference_npz_path: 'data/imagenet/VIRTUAL_imagenet256_labeled.npz'
 
 
