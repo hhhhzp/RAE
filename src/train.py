@@ -281,7 +281,7 @@ def main():
     #### Model init
     # rae: RAE = instantiate_from_config(rae_config).to(device)
     config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
-    rae = UniFlowVisionModel._from_config(config, torch_dtype=torch.bfloat16).to(device)
+    rae = UniFlowVisionModel._from_config(config, dtype=torch.bfloat16).to(device)
     rae.eval()
     model: Stage2ModelProtocol = instantiate_from_config(model_config).to(device)
     # if args.compile:
@@ -511,7 +511,7 @@ def main():
             images = images.to(device)
             labels = labels.to(device)
             with torch.no_grad():  # TODO: wrap this in autocast?
-                z = rae.encode(images)
+                z = rae.encode(images.to(torch.bfloat16)).float()
             optimizer.zero_grad(set_to_none=True)
             model_kwargs = dict(y=labels)
             with autocast(**autocast_kwargs):
