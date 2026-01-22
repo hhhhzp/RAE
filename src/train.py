@@ -572,6 +572,8 @@ def main():
                     samples.float()
                     if use_guidance:
                         samples, _ = samples.chunk(2, dim=0)
+
+                    print(samples.shape, " samples.shape")
                     samples = rae.decode(samples.contiguous())
                     samples = samples.cpu().float()
                     print(samples.shape, " samples.shape")
