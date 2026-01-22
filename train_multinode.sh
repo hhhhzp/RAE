@@ -46,4 +46,5 @@ torchrun \
     --data-path $DATA_PATH \
     --results-dir $RESULTS_DIR \
     --precision $PRECISION \
-    --compile
+    --compile \
+    --wandb
