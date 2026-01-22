@@ -85,6 +85,7 @@ def evaluate_generation_distributed(
     autocast_kwargs: dict,
     metric_batch_size: int = 128,
     reference_npz_path: Optional[str] = None,
+    null_label: int = 1000,
 ) -> Optional[Dict[str, float]]:
     """
     Evaluate reconstruction metrics using all GPUs in a distributed manner.

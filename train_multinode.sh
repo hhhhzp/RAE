@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# Multi-node Multi-GPU Training Script for RAE
+# Usage: 
+#   On each node, set NODE_RANK and run this script
+#   Node 0: NODE_RANK=0 bash train_multinode.sh
+#   Node 1: NODE_RANK=1 bash train_multinode.sh
+#   Node 2: NODE_RANK=2 bash train_multinode.sh
+#   Node 3: NODE_RANK=3 bash train_multinode.sh
+
+# Multi-node configuration
+export MASTER_ADDR=${MASTER_ADDR:-"29.111.44.202"}
+export MASTER_PORT=${MASTER_PORT:-28778}
+export NNODES=${NNODES:-4}
+export NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
+export NODE_RANK=${NODE_RANK:-0}
+
+# Experiment configuration
+export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE"}
+
+# Training configuration
+CONFIG_PATH=${CONFIG_PATH:-"configs/stage2/training/ImageNet256/DiTDH-S_DINOv2-B.yaml"}
+DATA_PATH=${DATA_PATH:-"/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k"}
+RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2"}
+PRECISION=${PRECISION:-"fp32"}
+COMPILE=${COMPILE:-""}
+
+# Build compile flag
+COMPILE_FLAG=""
+if [ "$COMPILE" = "true" ] || [ "$COMPILE" = "1" ]; then
+    COMPILE_FLAG="--compile"
+fi
+
+echo "=========================================="
+echo "Multi-Node Training Configuration"
+echo "=========================================="
+echo "MASTER_ADDR: $MASTER_ADDR"
+echo "MASTER_PORT: $MASTER_PORT"
+echo "NNODES: $NNODES"
+echo "NGPUS_PER_NODE: $NGPUS_PER_NODE"
+echo "NODE_RANK: $NODE_RANK"
+echo "EXPERIMENT_NAME: $EXPERIMENT_NAME"
+echo "CONFIG_PATH: $CONFIG_PATH"
+echo "DATA_PATH: $DATA_PATH"
+echo "RESULTS_DIR: $RESULTS_DIR"
+echo "PRECISION: $PRECISION"
+echo "COMPILE: $COMPILE"
+echo "=========================================="
+
+# Launch training with torchrun
+torchrun \
+    --nnodes=$NNODES \
+    --nproc_per_node=$NGPUS_PER_NODE \
+    --node_rank=$NODE_RANK \
+    --master_addr=$MASTER_ADDR \
+    --master_port=$MASTER_PORT \
+    src/train.py \
+    --config $CONFIG_PATH \
+    --data-path $DATA_PATH \
+    --results-dir $RESULTS_DIR \
+    --precision $PRECISION \
+    $COMPILE_FLAG

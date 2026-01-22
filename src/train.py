@@ -659,6 +659,7 @@ def main():
                         global_step=global_step,
                         autocast_kwargs=autocast_kwargs,
                         reference_npz_path=reference_npz_path,
+                        null_label=null_label,
                     )
                     # log with prefix
                     eval_stats = (
