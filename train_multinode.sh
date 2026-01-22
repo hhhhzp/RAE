@@ -25,28 +25,6 @@ RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2"}
 PRECISION=${PRECISION:-"fp32"}
 COMPILE=${COMPILE:-""}
 
-# Build compile flag
-COMPILE_FLAG=""
-if [ "$COMPILE" = "true" ] || [ "$COMPILE" = "1" ]; then
-    COMPILE_FLAG="--compile"
-fi
-
-echo "=========================================="
-echo "Multi-Node Training Configuration"
-echo "=========================================="
-echo "MASTER_ADDR: $MASTER_ADDR"
-echo "MASTER_PORT: $MASTER_PORT"
-echo "NNODES: $NNODES"
-echo "NGPUS_PER_NODE: $NGPUS_PER_NODE"
-echo "NODE_RANK: $NODE_RANK"
-echo "EXPERIMENT_NAME: $EXPERIMENT_NAME"
-echo "CONFIG_PATH: $CONFIG_PATH"
-echo "DATA_PATH: $DATA_PATH"
-echo "RESULTS_DIR: $RESULTS_DIR"
-echo "PRECISION: $PRECISION"
-echo "COMPILE: $COMPILE"
-echo "=========================================="
-
 # Launch training with torchrun
 torchrun \
     --nnodes=$NNODES \
@@ -59,4 +37,4 @@ torchrun \
     --data-path $DATA_PATH \
     --results-dir $RESULTS_DIR \
     --precision $PRECISION \
-    $COMPILE_FLAG
+    --compile
