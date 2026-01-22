@@ -26,6 +26,8 @@ from torchvision import transforms
 import numpy as np
 from PIL import Image
 from copy import deepcopy
+from skimage.metrics import structural_similarity as ssim_loss
+from skimage.metrics import peak_signal_noise_ratio as psnr_loss
 from glob import glob
 from time import time
 import argparse
@@ -282,7 +284,59 @@ def main():
     # rae: RAE = instantiate_from_config(rae_config).to(device)
     config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
     rae = UniFlowVisionModel._from_config(config, dtype=torch.bfloat16).to(device)
+
+    # Load pretrained RAE weights
+    state_dict = torch.load(
+        '../DeCo/dual_internvit_2b/exp_sem_gen_gate_c256_new_stage2_448px/epoch=0-step=40000.ckpt',
+        map_location='cpu',
+    )['state_dict']
+    # Extract keys with 'model.' prefix
+    rae_state_dict = {
+        k.replace('model.', '', 1): v
+        for k, v in state_dict.items()
+        if k.startswith('model.')
+    }
+    rae.load_state_dict(rae_state_dict)
+    logger.info(f"Loaded pretrained RAE weights from checkpoint")
+
     rae.eval()
+
+    # Test RAE encode-decode with a sample image
+    if rank == 0:
+        test_img_path = "assets/pixabay_cat.png"
+        if os.path.exists(test_img_path):
+            logger.info(f"Testing RAE encode-decode with {test_img_path}...")
+            test_img = Image.open(test_img_path).convert('RGB')
+            # Resize and center crop to match training image size
+            test_img = center_crop_arr(test_img, args.image_size)
+            test_img_tensor = transforms.ToTensor()(test_img).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                # Encode and decode
+                latent = rae.encode(test_img_tensor.to(torch.bfloat16))
+                reconstructed = rae.decode(latent).float()
+
+            # Convert to numpy for metric calculation
+            img1_np = (
+                test_img_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            )  # [H, W, C]
+            img2_np = (
+                reconstructed.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            )  # [H, W, C]
+
+            # Calculate SSIM and PSNR
+            ssim_val = ssim_loss(
+                img1_np, img2_np, multichannel=True, data_range=1.0, channel_axis=-1
+            )
+            psnr_val = psnr_loss(img1_np, img2_np, data_range=1.0)
+
+            logger.info(
+                f"RAE Test Results - SSIM: {ssim_val:.4f}, PSNR: {psnr_val:.2f} dB"
+            )
+        else:
+            logger.warning(
+                f"Test image not found at {test_img_path}, skipping RAE test."
+            )
     model: Stage2ModelProtocol = instantiate_from_config(model_config).to(device)
     # if args.compile:
     #     try:
