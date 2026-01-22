@@ -282,6 +282,19 @@ def main():
     # rae: RAE = instantiate_from_config(rae_config).to(device)
     config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
     rae = UniFlowVisionModel._from_config(config, dtype=torch.bfloat16).to(device)
+
+    # Convert pixel branch modules to fp32
+    if hasattr(rae, 'enable_pixel_branch') and rae.enable_pixel_branch:
+        if hasattr(rae, 'gen_latent_proj'):
+            rae.gen_latent_proj = rae.gen_latent_proj.float()
+        if hasattr(rae, 'global_block_pos_embed'):
+            rae.global_block_pos_embed.data = rae.global_block_pos_embed.data.float()
+        if hasattr(rae, 'global_blocks'):
+            rae.global_blocks = rae.global_blocks.float()
+        if hasattr(rae, 'flow_head'):
+            rae.flow_head = rae.flow_head.float()
+        logger.info("Converted pixel branch modules to fp32 precision")
+
     rae.eval()
     model: Stage2ModelProtocol = instantiate_from_config(model_config).to(device)
     # if args.compile:
