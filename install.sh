@@ -1,4 +1,5 @@
 conda create -n rae python=3.10 -y
+sleep 3
 conda activate rae
 pip install uv
 
