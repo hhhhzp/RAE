@@ -281,7 +281,7 @@ def main():
     #### Model init
     # rae: RAE = instantiate_from_config(rae_config).to(device)
     config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
-    rae = UniFlowVisionModel(config).to(device)
+    rae = UniFlowVisionModel._from_config(config, torch_dtype=torch.bfloat16).to(device)
     rae.eval()
     model: Stage2ModelProtocol = instantiate_from_config(model_config).to(device)
     # if args.compile:
