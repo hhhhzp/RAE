@@ -139,8 +139,17 @@ def prepare_dataloader(
     split: str = 'train',
 ) -> Tuple[DataLoader, DistributedSampler]:
     if use_hf_dataset:
-        # Load Hugging Face dataset
-        hf_dataset = load_dataset(str(data_path), split=split, trust_remote_code=True)
+        # Load Hugging Face dataset with caching
+        cache_dir = Path(data_path) / ".hf_cache"
+        cache_dir.mkdir(exist_ok=True)
+
+        hf_dataset = load_dataset(
+            str(data_path),
+            split=split,
+            trust_remote_code=True,
+            cache_dir=str(cache_dir),
+            download_mode="reuse_cache_if_exists",
+        )
         dataset = HFDatasetWrapper(hf_dataset, transform=transform)
     else:
         # Use traditional ImageFolder
