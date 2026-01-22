@@ -9,6 +9,13 @@
 #   Node 3: NODE_RANK=3 bash train_multinode.sh
 
 # Multi-node configuration
+export NCCL_IB_DISABLE=0
+export NCCL_SOCKET_IFNAME=bond1
+export SETUPTOOLS_USE_DISTUTILS=stdlib
+# export WANDB_RESUME=auto
+# export WANDB_RUN_ID=f7wp6p2f
+export http_proxy="http://star-proxy.oa.com:3128"
+export https_proxy="http://star-proxy.oa.com:3128"
 export MASTER_ADDR=${MASTER_ADDR:-"29.111.44.202"}
 export MASTER_PORT=${MASTER_PORT:-28778}
 export NNODES=${NNODES:-4}
