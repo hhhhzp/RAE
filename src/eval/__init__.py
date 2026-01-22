@@ -12,13 +12,15 @@ from tqdm import tqdm
 from typing import Dict, Optional
 import os
 import sys
+
+
 def compute_reconstruction_metrics(
     ref_arr: np.ndarray,
     rec_arr: np.ndarray,
     device: torch.device,
     batch_size: int = 128,
-    metrics_to_compute = ("psnr", "ssim", "rfid"),
-    disable_bar: bool = True
+    metrics_to_compute=("psnr", "ssim", "rfid"),
+    disable_bar: bool = True,
 ) -> Dict[str, float]:
     """
     Compute reconstruction metrics between reference and reconstructed images.
@@ -36,16 +38,22 @@ def compute_reconstruction_metrics(
     device_str = "cuda" if device.type == "cuda" else "cpu"
     results_dict = {}
     if 'psnr' in metrics_to_compute:
-        psnr = calculate_psnr(ref_arr, rec_arr, batch_size, device_str, disable_bar=disable_bar)
+        psnr = calculate_psnr(
+            ref_arr, rec_arr, batch_size, device_str, disable_bar=disable_bar
+        )
         results_dict["psnr"] = psnr
     if 'ssim' in metrics_to_compute:
-        ssim = calculate_ssim(ref_arr, rec_arr, batch_size, device_str, disable_bar=disable_bar)
+        ssim = calculate_ssim(
+            ref_arr, rec_arr, batch_size, device_str, disable_bar=disable_bar
+        )
         results_dict["ssim"] = ssim
     if 'rfid' in metrics_to_compute:
         rfid = calculate_rfid(ref_arr, rec_arr, batch_size, device_str)
         results_dict["rfid"] = rfid
     assert len(results_dict) > 0, "No metrics were computed."
     return results_dict
+
+
 def compute_generation_metrics(
     ref_arr: np.ndarray,
     rec_arr: np.ndarray,
@@ -54,18 +62,18 @@ def compute_generation_metrics(
 ):
     device_str = "cuda" if device.type == "cuda" else "cpu"
     # only eval FID
-    fid = calculate_gfid(rec_arr, ref_arr, batch_size, device_str) 
-    return {
-        'fid': fid
-    }
+    fid = calculate_gfid(rec_arr, ref_arr, batch_size, device_str)
+    return {'fid': fid}
+
+
 @torch.no_grad()
 def evaluate_generation_distributed(
     model_fn,
     sample_fn,
-    latent_size, # for noise 
+    latent_size,  # for noise
     additional_model_kwargs,
     use_guidance: bool,
-    rae, 
+    rae,
     val_dataset,
     num_samples: int,
     batch_size: int,
@@ -100,7 +108,9 @@ def evaluate_generation_distributed(
     # Save shard NPZ
     temp_dir = os.path.join(experiment_dir, "eval_npzs")
     if rank == 0:
-        print(f"\n[Eval] Starting distributed sampling evaluation at step {global_step}")
+        print(
+            f"\n[Eval] Starting distributed sampling evaluation at step {global_step}"
+        )
         os.makedirs(temp_dir, exist_ok=True)
 
     # Wait for rank 0 to create the directory before other ranks try to save
@@ -112,11 +122,11 @@ def evaluate_generation_distributed(
 
     if rank < world_size - 1:
         start = rank * chunk
-        end   = (rank + 1) * chunk
+        end = (rank + 1) * chunk
     else:
         # Last rank takes the remainder (and handles N < world_size gracefully)
         start = rank * chunk
-        end   = N
+        end = N
 
     rank_indices = list(range(start, end))
     subset = Subset(val_dataset, rank_indices)
@@ -131,12 +141,16 @@ def evaluate_generation_distributed(
 
     # Reconstruct images on this rank
     generations = []
-    iterator = tqdm(loader, desc=f"[Rank {rank}] Sampling", file=sys.stdout) if rank == 0 else loader
+    iterator = (
+        tqdm(loader, desc=f"[Rank {rank}] Sampling", file=sys.stdout)
+        if rank == 0
+        else loader
+    )
 
     with torch.inference_mode():
-        for _, label in iterator: # don't actually need images at sampling time
+        for _, label in iterator:  # don't actually need images at sampling time
             n = label.size(0)
-            z = torch.randn(n, *latent_size, device = device)
+            z = torch.randn(n, *latent_size, device=device)
             y = label.to(device)
             if use_guidance:
                 z = torch.cat([z, z], dim=0)
@@ -146,9 +160,14 @@ def evaluate_generation_distributed(
             with autocast(**autocast_kwargs):
                 samples = sample_fn(z, model_fn, **model_kwargs)[-1]
                 if use_guidance:
-                    samples = samples.chunk(2, dim = 0)
-                samples = rae.decode(samples).clamp(0,1)
-            gen_np = samples.mul(255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy()
+                    samples = samples.chunk(2, dim=0)
+                samples = rae.decode(samples.to(torch.bfloat16)).float().clamp(0, 1)
+            gen_np = (
+                samples.mul(255)
+                .permute(0, 2, 3, 1)
+                .to("cpu", dtype=torch.uint8)
+                .numpy()
+            )
             for img in gen_np:
                 generations.append(img)
 
@@ -206,6 +225,8 @@ def evaluate_generation_distributed(
 
     dist.barrier()
     return metrics
+
+
 @torch.no_grad()
 def evaluate_reconstruction_distributed(
     model,
@@ -220,7 +241,7 @@ def evaluate_reconstruction_distributed(
     autocast_kwargs: dict,
     metric_batch_size: int = 128,
     reference_npz_path: Optional[str] = None,
-    metrics_to_compute: Optional[list] = ("psnr", "ssim", "rfid")
+    metrics_to_compute: Optional[list] = ("psnr", "ssim", "rfid"),
 ) -> Optional[Dict[str, float]]:
     """
     Evaluate reconstruction metrics using all GPUs in a distributed manner.
@@ -245,7 +266,9 @@ def evaluate_reconstruction_distributed(
     # Save shard NPZ
     temp_dir = os.path.join(experiment_dir, "eval_npzs")
     if rank == 0:
-        print(f"\n[Eval] Starting distributed reconstruction evaluation at step {global_step}")
+        print(
+            f"\n[Eval] Starting distributed reconstruction evaluation at step {global_step}"
+        )
         os.makedirs(temp_dir, exist_ok=True)
 
     # Wait for rank 0 to create the directory before other ranks try to save
@@ -257,11 +280,11 @@ def evaluate_reconstruction_distributed(
 
     if rank < world_size - 1:
         start = rank * chunk
-        end   = (rank + 1) * chunk
+        end = (rank + 1) * chunk
     else:
         # Last rank takes the remainder (and handles N < world_size gracefully)
         start = rank * chunk
-        end   = N
+        end = N
 
     rank_indices = list(range(start, end))
     subset = Subset(val_dataset, rank_indices)
@@ -276,7 +299,11 @@ def evaluate_reconstruction_distributed(
 
     # Reconstruct images on this rank
     reconstructions = []
-    iterator = tqdm(loader, desc=f"[Rank {rank}] Reconstructing", file=sys.stdout) if rank == 0 else loader
+    iterator = (
+        tqdm(loader, desc=f"[Rank {rank}] Reconstructing", file=sys.stdout)
+        if rank == 0
+        else loader
+    )
 
     with torch.inference_mode():
         for images, _ in iterator:
@@ -286,7 +313,9 @@ def evaluate_reconstruction_distributed(
 
             # Convert to numpy uint8 [H, W, C]
             recon = recon.clamp(0, 1)
-            recon_np = recon.mul(255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy()
+            recon_np = (
+                recon.mul(255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy()
+            )
 
             for img in recon_np:
                 reconstructions.append(img)
@@ -296,7 +325,9 @@ def evaluate_reconstruction_distributed(
     np.savez(shard_path, arr_0=reconstructions)
 
     if rank == 0:
-        print(f"[Rank {rank}] Saved {len(reconstructions)} reconstructions to {shard_path}")
+        print(
+            f"[Rank {rank}] Saved {len(reconstructions)} reconstructions to {shard_path}"
+        )
 
     # Wait for all ranks to finish reconstruction
     dist.barrier()
@@ -321,7 +352,9 @@ def evaluate_reconstruction_distributed(
             raise FileNotFoundError(f"Reference NPZ not found at {ref_npz_path}")
 
         ref_images = np.load(ref_npz_path)["arr_0"]
-        print(f"[Eval] Loaded reference NPZ from {ref_npz_path}, shape: {ref_images.shape}")
+        print(
+            f"[Eval] Loaded reference NPZ from {ref_npz_path}, shape: {ref_images.shape}"
+        )
 
         # Compute metrics
         print("[Eval] Computing metrics...")
@@ -331,7 +364,7 @@ def evaluate_reconstruction_distributed(
             device,
             metric_batch_size,
             metrics_to_compute=metrics_to_compute,
-            disable_bar= True, # by default no bar
+            disable_bar=True,  # by default no bar
         )
 
         # Print results
@@ -349,8 +382,11 @@ def evaluate_reconstruction_distributed(
     # model.train()
 
     return metrics
+
+
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--ref-img", type=str, default="samples/imagenet-256-val.npz")
     parser.add_argument("--rec-img", type=str, default="samples/sdvae-ft-mse-f8d4.npz")
@@ -362,7 +398,7 @@ if __name__ == "__main__":
     ref_img = np.load(args.ref_img)["arr_0"]
     rec_img = np.load(args.rec_img)["arr_0"]
     print(f"Loaded images: ref: {ref_img.shape}, rec: {rec_img.shape}")
-    
+
     psnr = calculate_psnr(ref_img, rec_img, args.bs, device)
     print(f"PSNR: {psnr:.6f}")
     lpips = calculate_lpips(ref_img, rec_img, args.bs, device)
