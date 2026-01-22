@@ -143,20 +143,7 @@ def prepare_dataloader(
     data_path = Path(data_path)
 
     if use_hf_dataset:
-        if world_size > 1 and rank == 0:
-            load_dataset(
-                str(data_path),
-                trust_remote_code=True,
-            )
-
-        if world_size > 1:
-            dist.barrier()
-
-        raw_dataset = load_dataset(
-            str(data_path),
-            trust_remote_code=True,
-        )
-        hf_dataset = raw_dataset[split]
+        hf_dataset = load_dataset(data_path, split=split, trust_remote_code=True)
 
         dataset = HFDatasetWrapper(hf_dataset, transform=transform)
     else:
