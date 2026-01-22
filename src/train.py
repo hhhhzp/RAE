@@ -572,8 +572,9 @@ def main():
                     samples.float()
                     if use_guidance:
                         samples, _ = samples.chunk(2, dim=0)
-                    samples = rae.decode(samples)
+                    samples = rae.decode(samples.contiguous())
                     samples = samples.cpu().float()
+                    print(samples.shape, " samples.shape")
                     dist.barrier()
                     if args.wandb and rank == 0:
                         wandb_utils.log_image(samples, global_step)
