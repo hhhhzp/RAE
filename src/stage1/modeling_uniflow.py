@@ -905,13 +905,7 @@ class FlowDecoder(nn.Module):
         # self.mask_token = nn.Parameter(torch.zeros(1, 1, z_channels))
 
         # Perceptual loss network (LPIPS-based) - only initialize if use_lpips is True
-        if self.use_lpips:
-            from src.models.modules.perceptual_loss import PerceptualLoss
-
-            self.lpips_loss = PerceptualLoss(model_name='lpips-convnext_s-1.0-0.1')
-            # PerceptualLoss already freezes parameters in its __init__
-        else:
-            self.lpips_loss = None
+        self.lpips_loss = None
 
     def forward_train(self, x1, z, pos, compute_lpips=True):
         """
