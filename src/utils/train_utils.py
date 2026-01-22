@@ -144,7 +144,7 @@ def prepare_dataloader(
 
     if use_hf_dataset:
         hf_dataset = load_dataset(
-            data_path, split=split, trust_remote_code=True, num_proc=128
+            str(data_path), split=split, trust_remote_code=True, num_proc=128
         )
         dataset = HFDatasetWrapper(hf_dataset, transform=transform)
     else:
