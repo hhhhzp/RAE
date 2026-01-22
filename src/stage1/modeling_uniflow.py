@@ -1969,11 +1969,11 @@ def upsample_tokens(tokens, scale_factor=2):
 def pixel_shuffle(x, scale_factor=0.5):
     n, w, h, c = x.size()
     # N, W, H, C --> N, W, H * scale, C // scale
-    x = x.view(n, w, int(h * scale_factor), int(c / scale_factor))
+    x = x.reshape(n, w, int(h * scale_factor), int(c / scale_factor))
     # N, W, H * scale, C // scale --> N, H * scale, W, C // scale
     x = x.permute(0, 2, 1, 3).contiguous()
     # N, H * scale, W, C // scale --> N, H * scale, W * scale, C // (scale ** 2)
-    x = x.view(
+    x = x.reshape(
         n,
         int(h * scale_factor),
         int(w * scale_factor),
