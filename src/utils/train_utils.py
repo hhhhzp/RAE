@@ -112,12 +112,18 @@ class HFDatasetWrapper(torch.utils.data.Dataset):
         image = item['image']
         label = item['label']
 
-        # Convert to PIL Image if needed
-        if not isinstance(image, Image.Image):
-            image = Image.fromarray(image)
+        # Ensure RGB mode
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
 
         if self.transform:
             image = self.transform(image)
+
+        # Ensure label is a Python int (not numpy.int64 or tensor)
+        if isinstance(label, (np.integer, np.int64)):
+            label = int(label)
+        elif isinstance(label, torch.Tensor):
+            label = label.item()
 
         return image, label
 
