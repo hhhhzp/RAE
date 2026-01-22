@@ -150,10 +150,9 @@ def prepare_dataloader(
             dist.barrier()
 
         hf_dataset = load_dataset(
-            "imagefolder",
-            data_dir=str(data_path),
+            str(data_path),
             split=split,
-            cache_dir=str(cache_dir),
+            trust_remote_code=True,
         )
 
         if world_size > 1 and rank == 0:
