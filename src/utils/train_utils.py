@@ -10,11 +10,15 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from pathlib import Path
 from copy import deepcopy
+from datasets import load_dataset
 from .dist_utils import setup_distributed
 
 
-
-def parse_configs(config: Union[DictConfig, str]) -> Tuple[DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig]:
+def parse_configs(
+    config: Union[DictConfig, str],
+) -> Tuple[
+    DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig, DictConfig
+]:
     """Load a config file and return component sections as DictConfigs."""
     if isinstance(config, str):
         config = OmegaConf.load(config)
@@ -26,12 +30,23 @@ def parse_configs(config: Union[DictConfig, str]) -> Tuple[DictConfig, DictConfi
     misc = config.get("misc", None)
     training_config = config.get("training", None)
     eval_config = config.get("eval", None)
-    return rae_config, stage2_config, transport_config, sampler_config, guidance_config, misc, training_config, eval_config
+    return (
+        rae_config,
+        stage2_config,
+        transport_config,
+        sampler_config,
+        guidance_config,
+        misc,
+        training_config,
+        eval_config,
+    )
+
 
 def none_or_str(value):
     if value == 'None':
         return None
     return value
+
 
 def center_crop_arr(pil_image, image_size):
     """
@@ -51,11 +66,15 @@ def center_crop_arr(pil_image, image_size):
     arr = np.array(pil_image)
     crop_y = (arr.shape[0] - image_size) // 2
     crop_x = (arr.shape[1] - image_size) // 2
-    return Image.fromarray(arr[crop_y: crop_y + image_size, crop_x: crop_x + image_size])
+    return Image.fromarray(
+        arr[crop_y : crop_y + image_size, crop_x : crop_x + image_size]
+    )
+
 
 #################################################################################
 #                             Training Helper Functions                         #
 #################################################################################
+
 
 def requires_grad(model, flag=True):
     """
@@ -63,6 +82,7 @@ def requires_grad(model, flag=True):
     """
     for p in model.parameters():
         p.requires_grad = flag
+
 
 @torch.no_grad()
 def update_ema(ema_model, model, decay=0.9999):
@@ -76,16 +96,53 @@ def update_ema(ema_model, model, decay=0.9999):
         # TODO: Consider applying only to params that require_grad to avoid small numerical changes of pos_embed
         ema_params[name].mul_(decay).add_(param.data, alpha=1 - decay)
 
+
+class HFDatasetWrapper(torch.utils.data.Dataset):
+    """Wrapper for Hugging Face dataset to work with PyTorch DataLoader."""
+
+    def __init__(self, hf_dataset, transform=None):
+        self.hf_dataset = hf_dataset
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.hf_dataset)
+
+    def __getitem__(self, idx):
+        item = self.hf_dataset[idx]
+        image = item['image']
+        label = item['label']
+
+        # Convert to PIL Image if needed
+        if not isinstance(image, Image.Image):
+            image = Image.fromarray(image)
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+
+
 def prepare_dataloader(
     data_path: Path,
     batch_size: int,
     workers: int,
     rank: int,
     world_size: int,
-    transform: List= None,
+    transform: List = None,
+    use_hf_dataset: bool = False,
+    split: str = 'train',
 ) -> Tuple[DataLoader, DistributedSampler]:
-    dataset = ImageFolder(str(data_path), transform=transform)
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    if use_hf_dataset:
+        # Load Hugging Face dataset
+        hf_dataset = load_dataset(str(data_path), split=split, trust_remote_code=True)
+        dataset = HFDatasetWrapper(hf_dataset, transform=transform)
+    else:
+        # Use traditional ImageFolder
+        dataset = ImageFolder(str(data_path), transform=transform)
+
+    sampler = DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank, shuffle=True
+    )
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
@@ -95,6 +152,7 @@ def prepare_dataloader(
         drop_last=True,
     )
     return loader, sampler
+
 
 def get_autocast_scaler(args) -> Tuple[dict, torch.cuda.amp.GradScaler | None]:
     if args.precision == "fp16":
@@ -106,5 +164,5 @@ def get_autocast_scaler(args) -> Tuple[dict, torch.cuda.amp.GradScaler | None]:
     else:
         scaler = None
         autocast_kwargs = dict(enabled=False)
-    
+
     return scaler, autocast_kwargs
