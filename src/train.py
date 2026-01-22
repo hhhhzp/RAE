@@ -295,6 +295,7 @@ def main():
         k.replace('model.', '', 1): v
         for k, v in state_dict.items()
         if k.startswith('model.')
+        and not any(x in k for x in ["lpips_loss", "teacher_mlp"])
     }
     rae.load_state_dict(rae_state_dict)
     logger.info(f"Loaded pretrained RAE weights from checkpoint")
