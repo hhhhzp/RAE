@@ -283,6 +283,7 @@ def main():
     #### Model init
     # rae: RAE = instantiate_from_config(rae_config).to(device)
     config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
+    config.num_sampling_steps = '4'
     rae = UniFlowVisionModel._from_config(config, dtype=torch.bfloat16).to(device)
 
     # Load pretrained RAE weights
