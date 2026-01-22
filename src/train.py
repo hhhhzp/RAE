@@ -511,7 +511,7 @@ def main():
             images = images.to(device)
             labels = labels.to(device)
             with torch.no_grad():  # TODO: wrap this in autocast?
-                z = rae.encode(images)
+                z = rae.encode(images.to(torch.bfloat16))
             optimizer.zero_grad(set_to_none=True)
             model_kwargs = dict(y=labels)
             with autocast(**autocast_kwargs):
