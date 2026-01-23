@@ -161,7 +161,7 @@ def main(args):
         print(f"Using time_dist_shift={time_dist_shift:.4f}.")
 
     config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
-    config.num_sampling_steps = '4'
+    # config.num_sampling_steps = '4'
     rae = UniFlowVisionModel._from_config(config, dtype=torch.float32).to(device)
 
     # Load pretrained RAE weights
