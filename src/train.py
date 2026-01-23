@@ -9,6 +9,7 @@ import logging
 import math
 import os
 from collections import defaultdict, OrderedDict
+from typing import Dict
 import torch
 
 from stage1.configuration_uniflow import UniFlowVisionConfig
