@@ -349,7 +349,9 @@ def main(args):
             samples = sample_fn(z, model_fn, **model_kwargs)[-1]
             if using_cfg:
                 samples, _ = samples.chunk(2, dim=0)
+            import torch.nn.functional as F
 
+            samples = F.layer_norm(samples, (samples.shape[-1],))
             samples = rae.decode(samples).clamp(0, 1)
             samples = (
                 samples.mul(255)
