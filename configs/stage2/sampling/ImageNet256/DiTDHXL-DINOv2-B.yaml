@@ -28,7 +28,7 @@ stage_2:
     use_rmsnorm: True
     wo_shift: False
     use_pos_embed: True
-  ckpt: 'ckpts/stage2/RAE_2B/checkpoints/ep-0000020.pt'
+  ckpt: 'ckpts/stage2/RAE_2B/checkpoints/ep-0000080.pt'
 
 transport:
   params:
