@@ -324,6 +324,12 @@ def main(args):
     for step_idx in pbar:
         with autocast(**autocast_kwargs):
             z = torch.randn(n, *latent_size, device=device)
+            # Check for NaN in initial noise
+            if torch.isnan(z).any():
+                raise RuntimeError(
+                    f"[Rank {rank}] NaN detected in initial noise z at step {step_idx}"
+                )
+
             y = label_sampler(step_idx)
 
             model_kwargs = dict(y=y)
@@ -347,12 +353,34 @@ def main(args):
                     model_fn = model.forward_with_cfg
 
             samples = sample_fn(z, model_fn, **model_kwargs)[-1]
+
+            # Check for NaN after sampling
+            if torch.isnan(samples).any():
+                raise RuntimeError(
+                    f"[Rank {rank}] NaN detected in samples after sampling at step {step_idx}"
+                )
+
             if using_cfg:
                 samples, _ = samples.chunk(2, dim=0)
+
+            # Check for NaN after CFG split
+            if torch.isnan(samples).any():
+                raise RuntimeError(
+                    f"[Rank {rank}] NaN detected in samples after CFG split at step {step_idx}"
+                )
+
             import torch.nn.functional as F
 
             # samples = F.layer_norm(samples, (samples.shape[-1],))
-            samples = rae.decode(samples).clamp(0, 1)
+            decoded_samples = rae.decode(samples)
+
+            # Check for NaN after decoding
+            if torch.isnan(decoded_samples).any():
+                raise RuntimeError(
+                    f"[Rank {rank}] NaN detected after RAE decoding at step {step_idx}"
+                )
+
+            samples = decoded_samples.clamp(0, 1)
             samples = (
                 samples.mul(255)
                 .permute(0, 2, 3, 1)
