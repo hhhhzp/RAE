@@ -8,6 +8,9 @@ stores results for downstream metrics. For single-device sampling, use sample.py
 import sys
 import os
 
+from stage1.configuration_uniflow import UniFlowVisionConfig
+from stage1.modeling_uniflow import UniFlowVisionModel
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
@@ -30,7 +33,6 @@ from stage2.transport import create_transport, Sampler
 from utils.train_utils import parse_configs
 
 
-
 def create_npz_from_sample_folder(sample_dir, num=50_000):
     """
     Builds a single .npz file from a folder of .png samples.
@@ -47,6 +49,7 @@ def create_npz_from_sample_folder(sample_dir, num=50_000):
     print(f"Saved .npz file to {npz_path} [shape={samples.shape}].")
     return npz_path
 
+
 def build_label_sampler(
     sampling_mode: str,
     num_classes: int,
@@ -62,6 +65,7 @@ def build_label_sampler(
     """Create a callable that returns a batch of labels for the given step index."""
 
     if sampling_mode == "random":
+
         def random_sampler(_step_idx: int) -> torch.Tensor:
             return torch.randint(0, num_classes, (batch_size,), device=device)
 
@@ -74,7 +78,9 @@ def build_label_sampler(
             )
 
         labels_per_class = num_fid_samples // num_classes
-        base_pool = torch.arange(num_classes, dtype=torch.long).repeat_interleave(labels_per_class)
+        base_pool = torch.arange(num_classes, dtype=torch.long).repeat_interleave(
+            labels_per_class
+        )
 
         generator = torch.Generator()
         generator.manual_seed(seed)
@@ -82,7 +88,9 @@ def build_label_sampler(
         base_pool = base_pool[permutation]
 
         if total_samples > num_fid_samples:
-            tail = torch.randint(0, num_classes, (total_samples - num_fid_samples,), generator=generator)
+            tail = torch.randint(
+                0, num_classes, (total_samples - num_fid_samples,), generator=generator
+            )
             global_pool = torch.cat([base_pool, tail], dim=0)
         else:
             global_pool = base_pool
@@ -99,10 +107,13 @@ def build_label_sampler(
         return equal_sampler
     raise ValueError(f"Unknown label sampling mode: {sampling_mode}")
 
+
 def main(args):
     """Run sampling with distributed execution."""
     if not torch.cuda.is_available():
-        raise RuntimeError("Sampling with DDP requires at least one GPU. Use sample.py for single-device usage.")
+        raise RuntimeError(
+            "Sampling with DDP requires at least one GPU. Use sample.py for single-device usage."
+        )
 
     torch.backends.cuda.matmul.allow_tf32 = args.tf32
     torch.backends.cudnn.allow_tf32 = args.tf32
@@ -123,10 +134,21 @@ def main(args):
 
     use_bf16 = args.precision == "bf16"
     if use_bf16 and not torch.cuda.is_bf16_supported():
-        raise ValueError("Requested bf16 precision, but the current CUDA device does not support bfloat16.")
+        raise ValueError(
+            "Requested bf16 precision, but the current CUDA device does not support bfloat16."
+        )
     autocast_kwargs = dict(dtype=torch.bfloat16, enabled=use_bf16)
     cfg = OmegaConf.load(args.config)
-    rae_config, model_config, transport_config, sampler_config, guidance_config, misc, _, _ = parse_configs(cfg)
+    (
+        rae_config,
+        model_config,
+        transport_config,
+        sampler_config,
+        guidance_config,
+        misc,
+        _,
+        _,
+    ) = parse_configs(cfg)
     if rae_config is None or model_config is None:
         raise ValueError("Config must provide both stage_1 and stage_2 entries.")
     misc = {} if misc is None else dict(misc)
@@ -138,7 +160,27 @@ def main(args):
     if rank == 0:
         print(f"Using time_dist_shift={time_dist_shift:.4f}.")
 
-    rae: RAE = instantiate_from_config(rae_config).to(device)
+    config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
+    config.num_sampling_steps = '4'
+    rae = UniFlowVisionModel._from_config(config, dtype=torch.float32).to(device)
+
+    # Load pretrained RAE weights
+    state_dict = torch.load(
+        '../DeCo/dual_internvit_2b/exp_sem_gen_gate_c256_new_stage2_448px/epoch=0-step=40000.ckpt',
+        map_location='cpu',
+        mmap=True,
+    )['state_dict']
+    # Extract keys with 'model.' prefix
+    rae_state_dict = {
+        k.replace('model.', '', 1): v
+        for k, v in state_dict.items()
+        if k.startswith('model.')
+        and not any(x in k for x in ["lpips_loss", "teacher_mlp"])
+    }
+    rae.load_state_dict(rae_state_dict)
+    print(f"Loaded pretrained RAE weights from checkpoint")
+
+    rae.eval()
     model: Stage2ModelProtocol = instantiate_from_config(model_config).to(device)
     rae.eval()
     model.eval()
@@ -180,8 +222,12 @@ def main(args):
     if guidance_scale > 1.0 and guidance_method == "autoguidance":
         guid_model_config = guidance_config.get("guidance_model")
         if guid_model_config is None:
-            raise ValueError("Please provide a guidance model config when using autoguidance.")
-        guid_model: Stage2ModelProtocol = instantiate_from_config(guid_model_config).to(device)
+            raise ValueError(
+                "Please provide a guidance model config when using autoguidance."
+            )
+        guid_model: Stage2ModelProtocol = instantiate_from_config(guid_model_config).to(
+            device
+        )
         guid_model.eval()
         guid_model_forward = guid_model.forward
 
@@ -191,19 +237,39 @@ def main(args):
     model_target = model_config.get("target", "stage2")
     model_string_name = str(model_target).split(".")[-1]
     ckpt_path = model_config.get("ckpt")
-    ckpt_string_name = "pretrained" if not ckpt_path else os.path.splitext(os.path.basename(str(ckpt_path)))[0]
+    ckpt_string_name = (
+        "pretrained"
+        if not ckpt_path
+        else os.path.splitext(os.path.basename(str(ckpt_path)))[0]
+    )
     sampling_method = sampler_params.get("sampling_method", "na")
     num_steps = sampler_params.get("num_steps", sampler_params.get("steps", "na"))
     guidance_tag = f"cfg-{guidance_scale:.2f}"
-    base_components = [model_string_name, ckpt_string_name, guidance_tag, f"bs{args.per_proc_batch_size}"]
+    base_components = [
+        model_string_name,
+        ckpt_string_name,
+        guidance_tag,
+        f"bs{args.per_proc_batch_size}",
+    ]
     if mode == "ODE":
         detail_components = [mode, str(num_steps), str(sampling_method), args.precision]
     else:
         diffusion_form = sampler_params.get("diffusion_form", "na")
         last_step = sampler_params.get("last_step", "na")
         last_step_size = sampler_params.get("last_step_size", "na")
-        detail_components = [mode, str(num_steps), str(sampling_method), str(diffusion_form), str(last_step), str(last_step_size), args.precision]
-    folder_name = "-".join(component.replace(os.sep, "-") for component in base_components + detail_components)
+        detail_components = [
+            mode,
+            str(num_steps),
+            str(sampling_method),
+            str(diffusion_form),
+            str(last_step),
+            str(last_step_size),
+            args.precision,
+        ]
+    folder_name = "-".join(
+        component.replace(os.sep, "-")
+        for component in base_components + detail_components
+    )
     possible_folder_name = os.environ.get('SAVE_FOLDER', None)
     if possible_folder_name:
         sample_folder_dir = os.path.join(args.sample_dir, possible_folder_name)
@@ -216,16 +282,27 @@ def main(args):
 
     n = args.per_proc_batch_size
     global_batch_size = n * world_size
-    existing = [name for name in os.listdir(sample_folder_dir) if (os.path.isfile(os.path.join(sample_folder_dir, name)) and name.endswith(".png"))]
+    existing = [
+        name
+        for name in os.listdir(sample_folder_dir)
+        if (
+            os.path.isfile(os.path.join(sample_folder_dir, name))
+            and name.endswith(".png")
+        )
+    ]
     num_samples = len(existing)
-    total_samples = int(math.ceil(args.num_fid_samples / global_batch_size) * global_batch_size)
+    total_samples = int(
+        math.ceil(args.num_fid_samples / global_batch_size) * global_batch_size
+    )
     if rank == 0:
         print(f"Total number of images that will be sampled: {total_samples}")
     if total_samples % world_size != 0:
         raise ValueError("Total samples must be divisible by world size.")
     samples_needed_this_gpu = total_samples // world_size
     if samples_needed_this_gpu % n != 0:
-        raise ValueError("Per-rank sample count must be divisible by the per-GPU batch size.")
+        raise ValueError(
+            "Per-rank sample count must be divisible by the per-GPU batch size."
+        )
     iterations = samples_needed_this_gpu // n
     pbar = tqdm(range(iterations)) if rank == 0 else range(iterations)
     total = (num_samples // world_size) * world_size
@@ -274,7 +351,12 @@ def main(args):
                 samples, _ = samples.chunk(2, dim=0)
 
             samples = rae.decode(samples).clamp(0, 1)
-            samples = samples.mul(255).permute(0, 2, 3, 1).to("cpu", dtype=torch.uint8).numpy()
+            samples = (
+                samples.mul(255)
+                .permute(0, 2, 3, 1)
+                .to("cpu", dtype=torch.uint8)
+                .numpy()
+            )
 
         for local_idx, sample in enumerate(samples):
             index = local_idx * world_size + rank + total
@@ -293,14 +375,22 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
+    parser.add_argument(
+        "--config", type=str, required=True, help="Path to the config file."
+    )
     parser.add_argument("--sample-dir", type=str, default="samples")
     parser.add_argument("--per-proc-batch-size", type=int, default=125)
     parser.add_argument("--num-fid-samples", type=int, default=50_000)
     parser.add_argument("--global-seed", type=int, default=0)
-    parser.add_argument("--precision", type=str, choices=["fp32", "bf16"], default="fp32")
-    parser.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
-                        help="Enable TF32 matmuls (Ampere+). Disable if deterministic results are required.")
+    parser.add_argument(
+        "--precision", type=str, choices=["fp32", "bf16"], default="fp32"
+    )
+    parser.add_argument(
+        "--tf32",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable TF32 matmuls (Ampere+). Disable if deterministic results are required.",
+    )
     parser.add_argument(
         "--label-sampling",
         type=str,
