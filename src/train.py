@@ -283,7 +283,7 @@ def main():
     #### Model init
     # rae: RAE = instantiate_from_config(rae_config).to(device)
     config = UniFlowVisionConfig.from_pretrained("src/stage1/config.json")
-    config.num_sampling_steps = '4'
+    config.num_sampling_steps = '1'
     rae = UniFlowVisionModel._from_config(config, dtype=torch.bfloat16).to(device)
 
     # Load pretrained RAE weights
@@ -341,17 +341,17 @@ def main():
                 f"Test image not found at {test_img_path}, skipping RAE test."
             )
     model: Stage2ModelProtocol = instantiate_from_config(model_config).to(device)
-    # if args.compile:
-    #     try:
-    #         rae.encode = torch.compile(rae.encode)
-    #     except:
-    #         print('RAE ENCODE compile meets error, falling back to no compile')
-    #     try:
-    #         model.forward = torch.compile(model.forward)
-    #     except:
-    #         print('MODEL FORWARD compile meets error, falling back to no compile')
-    # else:
-    #     raise NotImplementedError('ARGS>COMPILE')
+    if args.compile:
+        # try:
+        #     rae.encode = torch.compile(rae.encode)
+        # except:
+        #     print('RAE ENCODE compile meets error, falling back to no compile')
+        try:
+            model.forward = torch.compile(model.forward)
+        except:
+            print('MODEL FORWARD compile meets error, falling back to no compile')
+    else:
+        raise NotImplementedError('ARGS>COMPILE')
     ema_model = deepcopy(model).to(device)
     ema_model.requires_grad_(False)
     ema_model.eval()
