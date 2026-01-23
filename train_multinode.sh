@@ -32,7 +32,7 @@ export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE_2B"}
 CONFIG_PATH=${CONFIG_PATH:-"configs/stage2/training/ImageNet256/DiTDH-XL_DINOv2-B.yaml"}
 DATA_PATH=${DATA_PATH:-"/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k"}
 RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2"}
-PRECISION=${PRECISION:-"bf16"}
+PRECISION=${PRECISION:-"fp32"}
 
 # Launch training with torchrun
 torchrun \
