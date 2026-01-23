@@ -351,7 +351,7 @@ def main(args):
                 samples, _ = samples.chunk(2, dim=0)
             import torch.nn.functional as F
 
-            samples = F.layer_norm(samples, (samples.shape[-1],))
+            # samples = F.layer_norm(samples, (samples.shape[-1],))
             samples = rae.decode(samples).clamp(0, 1)
             samples = (
                 samples.mul(255)
