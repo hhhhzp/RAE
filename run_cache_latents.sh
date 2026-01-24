@@ -25,7 +25,7 @@ torchrun --nproc_per_node=$NUM_GPUS \
     --node_rank=0 \
     --master_addr="localhost" \
     --master_port=29500 \
-    cache_latents.py \
+    src/cache_latents.py \
     --data-path "$DATA_PATH" \
     --output-dir "$OUTPUT_DIR" \
     --rae-ckpt "$RAE_CKPT" \
