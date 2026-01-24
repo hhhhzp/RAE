@@ -151,6 +151,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Override training.global_seed from the config.",
     )
+    parser.add_argument(
+        "--use-cached-latents",
+        action="store_true",
+        help="Use pre-cached latents instead of encoding images on-the-fly.",
+    )
+    parser.add_argument(
+        "--cached-latents-path",
+        type=str,
+        default=None,
+        help="Path to directory containing cached latents (.npz files).",
+    )
     args = parser.parse_args()
     return args
 
@@ -397,7 +408,13 @@ def main():
         transform=stage2_transform,
         use_hf_dataset=True,
         split='train',
+        use_cached_latents=args.use_cached_latents,
+        cached_latents_path=args.cached_latents_path,
     )
+    if args.use_cached_latents:
+        logger.info(
+            f"Using cached latents from {args.cached_latents_path}, containing {len(loader.dataset)} samples."
+        )
     if do_eval:
         from datasets import load_dataset
         from utils.train_utils import HFDatasetWrapper
@@ -565,11 +582,17 @@ def main():
                 optimizer,
                 scheduler,
             )
-        for step, (images, labels) in enumerate(loader):
-            images = images.to(device)
+        for step, (images_or_latents, labels) in enumerate(loader):
+            images_or_latents = images_or_latents.to(device)
             labels = labels.to(device)
-            with torch.no_grad():  # TODO: wrap this in autocast?
-                z = rae.encode(images.to(torch.bfloat16)).float()
+
+            # Get latents: either from cache or encode on-the-fly
+            if args.use_cached_latents:
+                z = images_or_latents.float()  # Already latents
+            else:
+                with torch.no_grad():  # TODO: wrap this in autocast?
+                    z = rae.encode(images_or_latents.to(torch.bfloat16)).float()
+
             optimizer.zero_grad(set_to_none=True)
             model_kwargs = dict(y=labels)
             with autocast(**autocast_kwargs):

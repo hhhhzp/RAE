@@ -138,17 +138,30 @@ def prepare_dataloader(
     transform: List = None,
     use_hf_dataset: bool = False,
     split: str = 'train',
+    use_cached_latents: bool = False,
+    cached_latents_path: str = None,
 ) -> Tuple[DataLoader, DistributedSampler]:
 
-    data_path = Path(data_path)
+    if use_cached_latents:
+        # Use cached latents dataset
+        if cached_latents_path is None:
+            raise ValueError(
+                "cached_latents_path must be specified when use_cached_latents=True"
+            )
+        from .cached_dataset import CachedLatentDataset
 
-    if use_hf_dataset:
-        hf_dataset = load_dataset(
-            str(data_path), split=split, trust_remote_code=True, num_proc=128
-        )
-        dataset = HFDatasetWrapper(hf_dataset, transform=transform)
+        dataset = CachedLatentDataset(cached_path=cached_latents_path, use_flip=True)
     else:
-        dataset = ImageFolder(str(data_path), transform=transform)
+        # Use regular image dataset
+        data_path = Path(data_path)
+
+        if use_hf_dataset:
+            hf_dataset = load_dataset(
+                str(data_path), split=split, trust_remote_code=True, num_proc=128
+            )
+            dataset = HFDatasetWrapper(hf_dataset, transform=transform)
+        else:
+            dataset = ImageFolder(str(data_path), transform=transform)
 
     sampler = DistributedSampler(
         dataset, num_replicas=world_size, rank=rank, shuffle=True
