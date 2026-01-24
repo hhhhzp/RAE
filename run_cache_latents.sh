@@ -14,7 +14,7 @@ export NCCL_SOCKET_IFNAME=bond1
 export SETUPTOOLS_USE_DISTUTILS=stdlib
 export MASTER_ADDR=${MASTER_ADDR:-"localhost"}
 export MASTER_PORT=${MASTER_PORT:-29500}
-export NNODES=${NNODES:-1}
+export NNODES=${NNODES:-4}
 export NGPUS_PER_NODE=${NGPUS_PER_NODE:-8}
 export NODE_RANK=${NODE_RANK:-0}
 
