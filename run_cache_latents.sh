@@ -7,17 +7,14 @@
 NUM_GPUS=8
 
 # Data and output paths
-DATA_PATH="your/dataset/path"
-OUTPUT_DIR="cached_latents"
+DATA_PATH="/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k"
+OUTPUT_DIR="/apdcephfs_sh2/share_300000800/data/multimodal/zhenpeng_data/imagenet-1k_cache_latent"
 RAE_CKPT="DeCo/dual_internvit_2b/exp_sem_gen_gate_c256_new_stage2_448px/epoch=0-step=40000.ckpt"
 
 # Training parameters
 IMAGE_SIZE=256
-BATCH_SIZE=32
+BATCH_SIZE=512
 NUM_WORKERS=8
-
-# Change to src directory (required for imports to work)
-cd src
 
 # Run with torchrun (recommended for multi-node)
 torchrun --nproc_per_node=$NUM_GPUS \
