@@ -9,7 +9,7 @@ NUM_GPUS=8
 # Data and output paths
 DATA_PATH="/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k"
 OUTPUT_DIR="/apdcephfs_sh2/share_300000800/data/multimodal/zhenpeng_data/imagenet-1k_cache_latent"
-RAE_CKPT="DeCo/dual_internvit_2b/exp_sem_gen_gate_c256_new_stage2_448px/epoch=0-step=40000.ckpt"
+RAE_CKPT="../DeCo/dual_internvit_2b/exp_sem_gen_gate_c256_new_stage2_448px/epoch=0-step=40000.ckptt"
 
 # Training parameters
 IMAGE_SIZE=256
