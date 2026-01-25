@@ -47,6 +47,4 @@ torchrun \
     --results-dir $RESULTS_DIR \
     --precision $PRECISION \
     --compile \
-    --wandb \
-    --use-cached-latents \
-    --cached-latents-path /apdcephfs_sh2/share_300000800/data/multimodal/zhenpeng_data/imagenet-1k_cache_latent
+    --wandb
