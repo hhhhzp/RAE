@@ -45,32 +45,23 @@ class FeatureAlignmentLoss(nn.Module):
 
         # Extract features
         with torch.no_grad():
-            encoder_output = self.encoder(normalized_images, output_hidden_states=True)
+            encoder_output = self.encoder(normalized_images)
             image_features = encoder_output.last_hidden_state[
                 :, self.unused_token_num :
-            ]  # [B, N, C]
-
+            ]
             # Reshape from [B, N, C] to [B, H, W, C] assuming square feature map
             B, N, C = image_features.shape
             H = W = int(N**0.5)
-            image_features = image_features.reshape(B, H, W, C).permute(
-                0, 3, 1, 2
-            )  # [B, C, H, W]
-
+            image_features = image_features.reshape(B, H, W, C).permute(0, 3, 1, 2)
             # Pixel shuffle: [B, C, H, W] -> [B, C*4, H/2, W/2]
-            image_features = F.pixel_unshuffle(
-                image_features, downscale_factor=2
-            )  # [B, C*4, H/2, W/2]
-
-            # Reshape back to [B, M, C] where M = (H/2) * (W/2)
+            image_features = F.pixel_unshuffle(image_features, downscale_factor=2)
             B, C_new, H_new, W_new = image_features.shape
             M = H_new * W_new
             C_final = C_new // 4
             image_features = image_features.reshape(B, 4, C_final, H_new, W_new)
             image_features = image_features.permute(0, 3, 4, 1, 2).reshape(
                 B, M, C_final
-            )  # [B, M, C]
-
+            )
         return image_features
 
     def forward(self, images, pred_features):

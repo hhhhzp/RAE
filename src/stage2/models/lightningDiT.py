@@ -205,14 +205,7 @@ class LightningDiT(nn.Module):
         self.final_layer = LightningFinalLayer(
             hidden_size, patch_size, self.out_channels, use_rmsnorm=use_rmsnorm
         )
-        self.proj = nn.Sequential(
-            nn.Sequential(
-                nn.Linear(hidden_size, 768 * 4),
-                nn.SiLU(),
-                nn.Linear(768 * 4, 768 * 4),
-            )
-        )
-        self.align_layer = 8
+
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -285,8 +278,7 @@ class LightningDiT(nn.Module):
         c = t + y  # (N, D)
 
         for i, block in enumerate(self.blocks):
-            if i == self.align_layer and return_feature:
-                feature = self.proj(x)
+
             x = block(x, c, feat_rope=self.feat_rope)
 
         x = self.final_layer(x, c)  # (N, T, patch_size ** 2 * out_channels)
@@ -294,8 +286,6 @@ class LightningDiT(nn.Module):
 
         if self.learn_sigma:
             x, _ = x.chunk(2, dim=1)
-        if return_feature:
-            return x, feature
         return x
 
     def forward_with_cfg(

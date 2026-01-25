@@ -9,12 +9,22 @@ import torch
 from torch import nn
 from .lightningDiT import PatchEmbed, Mlp, NormAttention
 from timm.models.vision_transformer import PatchEmbed, Mlp
-from .model_utils import VisionRotaryEmbeddingFast, RMSNorm, SwiGLUFFN, GaussianFourierEmbedding, LabelEmbedder, NormAttention, get_2d_sincos_pos_embed
+from .model_utils import (
+    VisionRotaryEmbeddingFast,
+    RMSNorm,
+    SwiGLUFFN,
+    GaussianFourierEmbedding,
+    LabelEmbedder,
+    NormAttention,
+    get_2d_sincos_pos_embed,
+)
 import torch.nn.functional as F
 from typing import *
 
 
-def DDTModulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+def DDTModulate(
+    x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor
+) -> torch.Tensor:
     """
     Applies per-segment modulation to x.
 
@@ -23,7 +33,7 @@ def DDTModulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor) -> to
         shift: Tensor of shape (B, L, D)
         scale: Tensor of shape (B, L, D)
     Returns:
-        Tensor of shape (B, L_x, D): x * (1 + scale) + shift, 
+        Tensor of shape (B, L_x, D): x * (1 + scale) + shift,
         with shift and scale repeated to match L_x if necessary.
     """
     B, Lx, D = x.shape
@@ -47,7 +57,7 @@ def DDTGate(x: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
         x: Tensor of shape (B, L_x, D)
         gate: Tensor of shape (B, L, D)
     Returns:
-        Tensor of shape (B, L_x, D): x * gate, 
+        Tensor of shape (B, L_x, D): x * gate,
         with gate repeated to match L_x if necessary.
     """
     B, Lx, D = x.shape
@@ -65,9 +75,9 @@ def DDTGate(x: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
 
 class LightningDDTBlock(nn.Module):
     """
-    Lightning DiT Block. We add features including: 
+    Lightning DiT Block. We add features including:
     - ROPE
-    - QKNorm 
+    - QKNorm
     - RMSNorm
     - SwiGLU
     - No shift AdaLN.
@@ -83,16 +93,14 @@ class LightningDDTBlock(nn.Module):
         use_swiglu=True,
         use_rmsnorm=True,
         wo_shift=False,
-        **block_kwargs
+        **block_kwargs,
     ):
         super().__init__()
 
         # Initialize normalization layers
         if not use_rmsnorm:
-            self.norm1 = nn.LayerNorm(
-                hidden_size, elementwise_affine=False, eps=1e-6)
-            self.norm2 = nn.LayerNorm(
-                hidden_size, elementwise_affine=False, eps=1e-6)
+            self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+            self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         else:
             self.norm1 = RMSNorm(hidden_size)
             self.norm2 = RMSNorm(hidden_size)
@@ -104,33 +112,34 @@ class LightningDDTBlock(nn.Module):
             qkv_bias=True,
             qk_norm=use_qknorm,
             use_rmsnorm=use_rmsnorm,
-            **block_kwargs
+            **block_kwargs,
         )
 
         # Initialize MLP layer
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        def approx_gelu(): return nn.GELU(approximate="tanh")
+
+        def approx_gelu():
+            return nn.GELU(approximate="tanh")
+
         if use_swiglu:
             # here we did not use SwiGLU from xformers because it is not compatible with torch.compile for now.
-            self.mlp = SwiGLUFFN(hidden_size, int(2/3 * mlp_hidden_dim))
+            self.mlp = SwiGLUFFN(hidden_size, int(2 / 3 * mlp_hidden_dim))
         else:
             self.mlp = Mlp(
                 in_features=hidden_size,
                 hidden_features=mlp_hidden_dim,
                 act_layer=approx_gelu,
-                drop=0
+                drop=0,
             )
 
         # Initialize AdaLN modulation
         if wo_shift:
             self.adaLN_modulation = nn.Sequential(
-                nn.SiLU(),
-                nn.Linear(hidden_size, 4 * hidden_size, bias=True)
+                nn.SiLU(), nn.Linear(hidden_size, 4 * hidden_size, bias=True)
             )
         else:
             self.adaLN_modulation = nn.Sequential(
-                nn.SiLU(),
-                nn.Linear(hidden_size, 6 * hidden_size, bias=True)
+                nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True)
             )
         self.wo_shift = wo_shift
 
@@ -138,17 +147,22 @@ class LightningDDTBlock(nn.Module):
         if len(c.shape) < len(x.shape):
             c = c.unsqueeze(1)  # (B, 1, C)
         if self.wo_shift:
-            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(
-                c).chunk(4, dim=-1)
+            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(
+                4, dim=-1
+            )
             shift_msa = None
             shift_mlp = None
         else:
-            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(
-                c).chunk(6, dim=-1)
-        x = x + DDTGate(self.attn(DDTModulate(self.norm1(x),
-                        shift_msa, scale_msa), rope=feat_rope), gate_msa)
-        x = x + DDTGate(self.mlp(DDTModulate(self.norm2(x),
-                        shift_mlp, scale_mlp)), gate_mlp)
+            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
+                self.adaLN_modulation(c).chunk(6, dim=-1)
+            )
+        x = x + DDTGate(
+            self.attn(DDTModulate(self.norm1(x), shift_msa, scale_msa), rope=feat_rope),
+            gate_msa,
+        )
+        x = x + DDTGate(
+            self.mlp(DDTModulate(self.norm2(x), shift_mlp, scale_mlp)), gate_mlp
+        )
         return x
 
 
@@ -161,14 +175,15 @@ class DDTFinalLayer(nn.Module):
         super().__init__()
         if not use_rmsnorm:
             self.norm_final = nn.LayerNorm(
-                hidden_size, elementwise_affine=False, eps=1e-6)
+                hidden_size, elementwise_affine=False, eps=1e-6
+            )
         else:
             self.norm_final = RMSNorm(hidden_size)
         self.linear = nn.Linear(
-            hidden_size, patch_size * patch_size * out_channels, bias=True)
+            hidden_size, patch_size * patch_size * out_channels, bias=True
+        )
         self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(hidden_size, 2 * hidden_size, bias=True)
+            nn.SiLU(), nn.Linear(hidden_size, 2 * hidden_size, bias=True)
         )
 
     def forward(self, x, c):
@@ -182,22 +197,22 @@ class DDTFinalLayer(nn.Module):
 
 class DiTwDDTHead(nn.Module):
     def __init__(
-            self,
-            input_size: int = 1,
-            patch_size: Union[list, int] = 1,
-            in_channels: int = 768,
-            hidden_size=[1152, 2048],
-            depth=[28, 2],
-            num_heads: Union[list[int], int] = [16, 16],
-            mlp_ratio=4.0,
-            class_dropout_prob=0.1,
-            num_classes=1000,
-            use_qknorm=False,
-            use_swiglu=True,
-            use_rope=True,
-            use_rmsnorm=True,
-            wo_shift=False,
-            use_pos_embed: bool = True,
+        self,
+        input_size: int = 1,
+        patch_size: Union[list, int] = 1,
+        in_channels: int = 768,
+        hidden_size=[1152, 2048],
+        depth=[28, 2],
+        num_heads: Union[list[int], int] = [16, 16],
+        mlp_ratio=4.0,
+        class_dropout_prob=0.1,
+        num_classes=1000,
+        use_qknorm=False,
+        use_swiglu=True,
+        use_rope=True,
+        use_rmsnorm=True,
+        wo_shift=False,
+        use_pos_embed: bool = True,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -205,8 +220,9 @@ class DiTwDDTHead(nn.Module):
 
         self.encoder_hidden_size = hidden_size[0]
         self.decoder_hidden_size = hidden_size[1]
-        self.num_heads = [num_heads, num_heads] if isinstance(
-            num_heads, int) else list(num_heads)
+        self.num_heads = (
+            [num_heads, num_heads] if isinstance(num_heads, int) else list(num_heads)
+        )
         self.num_decoder_blocks = depth[1]
         self.num_encoder_blocks = depth[0]
         self.num_blocks = depth[0] + depth[1]
@@ -214,8 +230,9 @@ class DiTwDDTHead(nn.Module):
         # analyze patch size
         if isinstance(patch_size, int) or isinstance(patch_size, float):
             patch_size = [patch_size, patch_size]  # patch size for s , x embed
-        assert len(
-            patch_size) == 2, f"patch size should be a list of two numbers, but got {patch_size}"
+        assert (
+            len(patch_size) == 2
+        ), f"patch size should be a list of two numbers, but got {patch_size}"
         self.patch_size = patch_size
         self.s_patch_size = patch_size[0]
         self.x_patch_size = patch_size[1]
@@ -226,24 +243,41 @@ class DiTwDDTHead(nn.Module):
         x_patch_size = self.x_patch_size
         x_channel_per_token = in_channels * self.x_patch_size * self.x_patch_size
         self.x_embedder = PatchEmbed(
-            x_input_size, x_patch_size, x_channel_per_token, self.decoder_hidden_size, bias=True)
+            x_input_size,
+            x_patch_size,
+            x_channel_per_token,
+            self.decoder_hidden_size,
+            bias=True,
+        )
         self.s_embedder = PatchEmbed(
-            s_input_size, s_patch_size, s_channel_per_token, self.encoder_hidden_size, bias=True)
+            s_input_size,
+            s_patch_size,
+            s_channel_per_token,
+            self.encoder_hidden_size,
+            bias=True,
+        )
         self.s_channel_per_token = s_channel_per_token
         self.x_channel_per_token = x_channel_per_token
-        self.s_projector = nn.Linear(
-            self.encoder_hidden_size, self.decoder_hidden_size) if self.encoder_hidden_size != self.decoder_hidden_size else nn.Identity()
+        self.s_projector = (
+            nn.Linear(self.encoder_hidden_size, self.decoder_hidden_size)
+            if self.encoder_hidden_size != self.decoder_hidden_size
+            else nn.Identity()
+        )
         self.t_embedder = GaussianFourierEmbedding(self.encoder_hidden_size)
         self.y_embedder = LabelEmbedder(
-            num_classes, self.encoder_hidden_size, class_dropout_prob)
+            num_classes, self.encoder_hidden_size, class_dropout_prob
+        )
         # print(f"x_channel_per_token: {x_channel_per_token}, s_channel_per_token: {s_channel_per_token}")
         self.final_layer = DDTFinalLayer(
-            self.decoder_hidden_size, 1, x_channel_per_token, use_rmsnorm=use_rmsnorm)
+            self.decoder_hidden_size, 1, x_channel_per_token, use_rmsnorm=use_rmsnorm
+        )
         # Will use fixed sin-cos embedding:
         if use_pos_embed:
             num_patches = self.s_embedder.num_patches
-            self.pos_embed = nn.Parameter(torch.zeros(
-                1, num_patches, self.encoder_hidden_size), requires_grad=False)
+            self.pos_embed = nn.Parameter(
+                torch.zeros(1, num_patches, self.encoder_hidden_size),
+                requires_grad=False,
+            )
             self.x_pos_embed = None
         self.use_pos_embed = use_pos_embed
         enc_num_heads = self.num_heads[0]
@@ -266,25 +300,43 @@ class DiTwDDTHead(nn.Module):
             )
         else:
             self.feat_rope = None
-        self.blocks = nn.ModuleList([
-            LightningDDTBlock(self.encoder_hidden_size if i < self.num_encoder_blocks else self.decoder_hidden_size,
-                              enc_num_heads if i < self.num_encoder_blocks else dec_num_heads,
-                              mlp_ratio=mlp_ratio,
-                              use_qknorm=use_qknorm,
-                              use_rmsnorm=use_rmsnorm,
-                              use_swiglu=use_swiglu,
-                              wo_shift=wo_shift,
-                              ) for i in range(self.num_blocks)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                LightningDDTBlock(
+                    (
+                        self.encoder_hidden_size
+                        if i < self.num_encoder_blocks
+                        else self.decoder_hidden_size
+                    ),
+                    enc_num_heads if i < self.num_encoder_blocks else dec_num_heads,
+                    mlp_ratio=mlp_ratio,
+                    use_qknorm=use_qknorm,
+                    use_rmsnorm=use_rmsnorm,
+                    use_swiglu=use_swiglu,
+                    wo_shift=wo_shift,
+                )
+                for i in range(self.num_blocks)
+            ]
+        )
+        self.proj = nn.Sequential(
+            nn.Sequential(
+                nn.Linear(hidden_size, 768 * 4),
+                nn.SiLU(),
+                nn.Linear(768 * 4, 768 * 4),
+            )
+        )
+        self.align_layer = 7
         self.initialize_weights()
 
     def initialize_weights(self, xavier_uniform_init: bool = False):
         if xavier_uniform_init:
+
             def _basic_init(module):
                 if isinstance(module, nn.Linear):
                     torch.nn.init.xavier_uniform_(module.weight)
                     if module.bias is not None:
                         nn.init.constant_(module.bias, 0)
+
             self.apply(_basic_init)
         # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
         w = self.x_embedder.proj.weight.data
@@ -301,9 +353,9 @@ class DiTwDDTHead(nn.Module):
         if self.use_pos_embed:
             # Initialize (and freeze) pos_embed by sin-cos embedding:
             pos_embed = get_2d_sincos_pos_embed(
-                self.pos_embed.shape[-1], int(self.s_embedder.num_patches ** 0.5))
-            self.pos_embed.data.copy_(
-                torch.from_numpy(pos_embed).float().unsqueeze(0))
+                self.pos_embed.shape[-1], int(self.s_embedder.num_patches**0.5)
+            )
+            self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         # Zero-out adaLN modulation layers in LightningDiT blocks:
         for block in self.blocks:
@@ -336,7 +388,7 @@ class DiTwDDTHead(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, s=None, mask=None):
+    def forward(self, x, t, y, s=None, mask=None, return_feature=False):
         # x = self.x_embedder(x) + self.pos_embed
         t = self.t_embedder(t)
         y = self.y_embedder(y, self.training)
@@ -348,6 +400,8 @@ class DiTwDDTHead(nn.Module):
             # print(f"t shape: {t.shape}, y shape: {y.shape}, c shape: {c.shape}, s shape: {s.shape}, pos_embed shape: {self.pos_embed.shape}")
             for i in range(self.num_encoder_blocks):
                 s = self.blocks[i](s, c, feat_rope=self.enc_feat_rope)
+                if i == self.align_layer - 1 and return_feature:
+                    feature = self.proj(s)
             # broadcast t to s
             t = t.unsqueeze(1).repeat(1, s.shape[1], 1)
             s = nn.functional.silu(t + s)
@@ -359,7 +413,10 @@ class DiTwDDTHead(nn.Module):
             x = self.blocks[i](x, s, feat_rope=self.dec_feat_rope)
         x = self.final_layer(x, s)
         x = self.unpatchify(x)
-        return x
+        if return_feature:
+            return x, feature
+        else:
+            return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale, cfg_interval=(0, 1)):
         """
@@ -373,36 +430,45 @@ class DiTwDDTHead(nn.Module):
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
         # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
-        eps, rest = model_out[:,
-                              :self.in_channels], model_out[:, self.in_channels:]
+        eps, rest = model_out[:, : self.in_channels], model_out[:, self.in_channels :]
         # eps, rest = model_out[:, :3], model_out[:, 3:]
         cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
         guid_t_min, guid_t_max = cfg_interval
-        assert guid_t_min < guid_t_max, "cfg_interval should be (min, max) with min < max"
-        t = t[: len(t) // 2] # get t for the conditional half
+        assert (
+            guid_t_min < guid_t_max
+        ), "cfg_interval should be (min, max) with min < max"
+        t = t[: len(t) // 2]  # get t for the conditional half
         half_eps = torch.where(
-            ((t >= guid_t_min) & (t <= guid_t_max)
-             ).view(-1, *[1] * (len(cond_eps.shape) - 1)),
-            uncond_eps + cfg_scale * (cond_eps - uncond_eps), cond_eps
+            ((t >= guid_t_min) & (t <= guid_t_max)).view(
+                -1, *[1] * (len(cond_eps.shape) - 1)
+            ),
+            uncond_eps + cfg_scale * (cond_eps - uncond_eps),
+            cond_eps,
         )
         eps = torch.cat([half_eps, half_eps], dim=0)
         return torch.cat([eps, rest], dim=1)
 
-    def forward_with_autoguidance(self, x, t, y, cfg_scale, additional_model_forward, cfg_interval=(0, 1)):
+    def forward_with_autoguidance(
+        self, x, t, y, cfg_scale, additional_model_forward, cfg_interval=(0, 1)
+    ):
         """
         Forward pass of LightningDiT, but also contain the forward pass for the additional model
         """
         model_out = self.forward(x, t, y)
         ag_model_out = additional_model_forward(x, t, y)
-        eps = model_out[:, :self.in_channels]
-        ag_eps = ag_model_out[:, :self.in_channels]
+        eps = model_out[:, : self.in_channels]
+        ag_eps = ag_model_out[:, : self.in_channels]
 
         guid_t_min, guid_t_max = cfg_interval
-        assert guid_t_min < guid_t_max, "cfg_interval should be (min, max) with min < max"
+        assert (
+            guid_t_min < guid_t_max
+        ), "cfg_interval should be (min, max) with min < max"
         eps = torch.where(
-            ((t >= guid_t_min) & (t <= guid_t_max)
-             ).view(-1, *[1] * (len(eps.shape) - 1)),
-            ag_eps + cfg_scale * (eps - ag_eps), eps
+            ((t >= guid_t_min) & (t <= guid_t_max)).view(
+                -1, *[1] * (len(eps.shape) - 1)
+            ),
+            ag_eps + cfg_scale * (eps - ag_eps),
+            eps,
         )
 
         return eps
