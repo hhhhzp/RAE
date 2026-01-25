@@ -8,6 +8,7 @@ from . import path
 from .utils import EasyDict, log_state, mean_flat
 from .integrators import ode, sde
 
+
 class ModelType(enum.Enum):
     """
     Which type of output the model predicts.
@@ -17,6 +18,7 @@ class ModelType(enum.Enum):
     SCORE = enum.auto()  # the model predicts \nabla \log p(x)
     VELOCITY = enum.auto()  # the model predicts v(x)
 
+
 class PathType(enum.Enum):
     """
     Which type of path to use.
@@ -25,6 +27,7 @@ class PathType(enum.Enum):
     LINEAR = enum.auto()
     GVP = enum.auto()
     VP = enum.auto()
+
 
 class WeightType(enum.Enum):
     """
@@ -36,9 +39,7 @@ class WeightType(enum.Enum):
     LIKELIHOOD = enum.auto()
 
 
-def truncated_logitnormal_sample(
-    shape, mu, sigma, low=0.0, high=1.0
-):
+def truncated_logitnormal_sample(shape, mu, sigma, low=0.0, high=1.0):
     """
     Samples X in (0,1) with Z = logit(X) ~ Normal(mu, sigma^2), truncated so X in [low, high].
     Works for scalars or tensors mu/sigma/low/high with broadcasting.
@@ -52,24 +53,24 @@ def truncated_logitnormal_sample(
     Returns:
         Tensor of samples with shape = broadcast(shape, mu.shape, ...)
     """
-    mu   = th.as_tensor(mu)
-    sigma= th.as_tensor(sigma)
-    low  = th.as_tensor(low)
+    mu = th.as_tensor(mu)
+    sigma = th.as_tensor(sigma)
+    low = th.as_tensor(low)
     high = th.as_tensor(high)
 
     # Map truncation bounds to logit space; handles 0/1 → ±inf automatically.
-    z_low  = th.logit(low)   # = -inf if low==0
+    z_low = th.logit(low)  # = -inf if low==0
     z_high = th.logit(high)  # = +inf if high==1
 
     # Standardize bounds for the base Normal(0,1)
     base = th.distributions.Normal(th.zeros_like(mu), th.ones_like(sigma))
-    alpha = (z_low  - mu) / sigma
-    beta  = (z_high - mu) / sigma
+    alpha = (z_low - mu) / sigma
+    beta = (z_high - mu) / sigma
 
     # Truncated-normal inverse CDF sampling:
     # U ~ Uniform(Φ(alpha), Φ(beta));  Z = mu + sigma * Φ^{-1}(U);  X = sigmoid(Z)
     cdf_alpha = base.cdf(alpha)
-    cdf_beta  = base.cdf(beta)
+    cdf_beta = base.cdf(beta)
 
     # Draw uniforms on the truncated interval
     out_shape = th.broadcast_shapes(shape, mu.shape, sigma.shape, low.shape, high.shape)
@@ -113,51 +114,55 @@ class Transport:
 
     def prior_logp(self, z):
         '''
-            Standard multivariate normal prior
-            Assume z is batched
+        Standard multivariate normal prior
+        Assume z is batched
         '''
         shape = th.tensor(z.size())
         N = th.prod(shape[1:])
-        _fn = lambda x: -N / 2. * np.log(2 * np.pi) - th.sum(x ** 2) / 2.
+        _fn = lambda x: -N / 2.0 * np.log(2 * np.pi) - th.sum(x**2) / 2.0
         return th.vmap(_fn)(z)
-    
 
     def check_interval(
-        self, 
-        train_eps, 
-        sample_eps, 
-        *, 
+        self,
+        train_eps,
+        sample_eps,
+        *,
         diffusion_form="SBDM",
-        sde=False, 
-        reverse=False, 
+        sde=False,
+        reverse=False,
         eval=False,
         last_step_size=0.0,
     ):
         t0 = 0
         t1 = 1 - 1 / 1000
         eps = train_eps if not eval else sample_eps
-        if (type(self.path_sampler) in [path.VPCPlan]):
+        if type(self.path_sampler) in [path.VPCPlan]:
 
             t1 = 1 - eps if (not sde or last_step_size == 0) else 1 - last_step_size
 
-        elif (type(self.path_sampler) in [path.ICPlan, path.GVPCPlan]) \
-            and (self.model_type != ModelType.VELOCITY or sde): # avoid numerical issue by taking a first semi-implicit step
+        elif (type(self.path_sampler) in [path.ICPlan, path.GVPCPlan]) and (
+            self.model_type != ModelType.VELOCITY or sde
+        ):  # avoid numerical issue by taking a first semi-implicit step
 
-            t0 = eps if (diffusion_form == "SBDM" and sde) or self.model_type != ModelType.VELOCITY else 0
+            t0 = (
+                eps
+                if (diffusion_form == "SBDM" and sde)
+                or self.model_type != ModelType.VELOCITY
+                else 0
+            )
             t1 = 1 - eps if (not sde or last_step_size == 0) else 1 - last_step_size
-        
+
         if reverse:
             t0, t1 = 1 - t0, 1 - t1
 
         return t0, t1
 
-
     def sample(self, x1):
         """Sampling x0 & t based on shape of x1 (if needed)
-          Args:
-            x1 - data point; [batch, *dim]
+        Args:
+          x1 - data point; [batch, *dim]
         """
-        
+
         x0 = th.randn_like(x1)
         dist_options = self.time_dist_type.split("_")
         t0, t1 = self.check_interval(self.train_eps, self.sample_eps)
@@ -165,7 +170,9 @@ class Transport:
             t = th.rand((x1.shape[0],)) * (t1 - t0) + t0
             # print('UNIFORM IS CALLED')
         elif dist_options[0] == "logit-normal":
-            assert len(dist_options) == 3, "Logit-normal distribution must specify the mean and variance."
+            assert (
+                len(dist_options) == 3
+            ), "Logit-normal distribution must specify the mean and variance."
             mu, sigma = float(dist_options[1]), float(dist_options[2])
             assert sigma > 0, "Logit-normal distribution must have positive variance."
             t = truncated_logitnormal_sample(
@@ -173,21 +180,17 @@ class Transport:
             )
             # print('LOGITNORMAL IS CALLED')
         else:
-            raise NotImplementedError(f"Unknown time distribution type {self.time_dist_type}")
+            raise NotImplementedError(
+                f"Unknown time distribution type {self.time_dist_type}"
+            )
 
         t = t.to(x1)
 
-        #sqrt_size_ratio = 1 / self.time_dist_shift # already sqrted
+        # sqrt_size_ratio = 1 / self.time_dist_shift # already sqrted
         t = self.time_dist_shift * t / (1 + (self.time_dist_shift - 1) * t)
         return t, x0, x1
-    
 
-    def training_losses(
-        self, 
-        model,  
-        x1, 
-        model_kwargs=None
-    ):
+    def training_losses(self, model, x1, model_kwargs=None):
         """Loss for training the score model
         Args:
         - model: backbone model; could be score, noise, or velocity
@@ -196,7 +199,7 @@ class Transport:
         """
         if model_kwargs == None:
             model_kwargs = {}
-        
+
         t, x0, x1 = self.sample(x1)
         t, xt, ut = self.path_sampler.plan(t, x0, x1)
         model_output = model(xt, t, **model_kwargs)
@@ -207,42 +210,40 @@ class Transport:
         terms['pred'] = model_output
         if self.model_type == ModelType.VELOCITY:
             terms['loss'] = mean_flat(((model_output - ut) ** 2))
-        else: 
+        else:
             _, drift_var = self.path_sampler.compute_drift(xt, t)
             sigma_t, _ = self.path_sampler.compute_sigma_t(path.expand_t_like_x(t, xt))
             if self.loss_type in [WeightType.VELOCITY]:
                 weight = (drift_var / sigma_t) ** 2
             elif self.loss_type in [WeightType.LIKELIHOOD]:
-                weight = drift_var / (sigma_t ** 2)
+                weight = drift_var / (sigma_t**2)
             elif self.loss_type in [WeightType.NONE]:
                 weight = 1
             else:
                 raise NotImplementedError()
-            
+
             if self.model_type == ModelType.NOISE:
                 terms['loss'] = mean_flat(weight * ((model_output - x0) ** 2))
             else:
                 terms['loss'] = mean_flat(weight * ((model_output * sigma_t + x0) ** 2))
-                
-        return terms
-    
 
-    def get_drift(
-        self
-    ):
+        return terms
+
+    def get_drift(self):
         """member function for obtaining the drift of the probability flow ODE"""
+
         def score_ode(x, t, model, **model_kwargs):
             drift_mean, drift_var = self.path_sampler.compute_drift(x, t)
             model_output = model(x, t, **model_kwargs)
-            return (-drift_mean + drift_var * model_output) # by change of variable
-        
+            return -drift_mean + drift_var * model_output  # by change of variable
+
         def noise_ode(x, t, model, **model_kwargs):
             drift_mean, drift_var = self.path_sampler.compute_drift(x, t)
             sigma_t, _ = self.path_sampler.compute_sigma_t(path.expand_t_like_x(t, x))
             model_output = model(x, t, **model_kwargs)
             score = model_output / -sigma_t
-            return (-drift_mean + drift_var * score)
-        
+            return -drift_mean + drift_var * score
+
         def velocity_ode(x, t, model, **model_kwargs):
             model_output = model(x, t, **model_kwargs)
             return model_output
@@ -253,34 +254,43 @@ class Transport:
             drift_fn = score_ode
         else:
             drift_fn = velocity_ode
-        
+
         def body_fn(x, t, model, **model_kwargs):
             model_output = drift_fn(x, t, model, **model_kwargs)
-            assert model_output.shape == x.shape, "Output shape from ODE solver must match input shape"
+            assert (
+                model_output.shape == x.shape
+            ), "Output shape from ODE solver must match input shape"
             return model_output
 
         return body_fn
-    
 
     def get_score(
         self,
     ):
-        """member function for obtaining score of 
-            x_t = alpha_t * x + sigma_t * eps"""
+        """member function for obtaining score of
+        x_t = alpha_t * x + sigma_t * eps"""
         if self.model_type == ModelType.NOISE:
-            score_fn = lambda x, t, model, **kwargs: model(x, t, **kwargs) / -self.path_sampler.compute_sigma_t(path.expand_t_like_x(t, x))[0]
+            score_fn = (
+                lambda x, t, model, **kwargs: model(x, t, **kwargs)
+                / -self.path_sampler.compute_sigma_t(path.expand_t_like_x(t, x))[0]
+            )
         elif self.model_type == ModelType.SCORE:
             score_fn = lambda x, t, model, **kwagrs: model(x, t, **kwagrs)
         elif self.model_type == ModelType.VELOCITY:
-            score_fn = lambda x, t, model, **kwargs: self.path_sampler.get_score_from_velocity(model(x, t, **kwargs), x, t)
+            score_fn = (
+                lambda x, t, model, **kwargs: self.path_sampler.get_score_from_velocity(
+                    model(x, t, **kwargs), x, t
+                )
+            )
         else:
             raise NotImplementedError()
-        
+
         return score_fn
 
 
 class Sampler:
     """Sampler class for the transport model"""
+
     def __init__(
         self,
         transport,
@@ -289,11 +299,11 @@ class Sampler:
         Args:
         - transport: an tranport object specify model prediction & interpolant type
         """
-        
+
         self.transport = transport
         self.drift = self.transport.get_drift()
         self.score = self.transport.get_score()
-    
+
     def __get_sde_diffusion_and_drift(
         self,
         *,
@@ -302,16 +312,19 @@ class Sampler:
     ):
 
         def sde_diffusion_fn(x, t):
-            diffusion = self.transport.path_sampler.compute_diffusion(x, t, form=diffusion_form, norm=diffusion_norm)
+            diffusion = self.transport.path_sampler.compute_diffusion(
+                x, t, form=diffusion_form, norm=diffusion_norm
+            )
             return diffusion
-        
+
         def sde_drift_fn(x, t, model, **kwargs):
-            drift_mean = self.drift(x, t, model, **kwargs) - sde_diffusion_fn(x, t) * self.score(x, t, model, **kwargs)
+            drift_mean = self.drift(x, t, model, **kwargs) - sde_diffusion_fn(
+                x, t
+            ) * self.score(x, t, model, **kwargs)
             return drift_mean
-    
 
         return sde_drift_fn, sde_diffusion_fn
-    
+
     def __get_last_step(
         self,
         sde_drift,
@@ -320,25 +333,27 @@ class Sampler:
         last_step_size,
     ):
         """Get the last step function of the SDE solver"""
-    
+
         if last_step is None:
-            last_step_fn = \
-                lambda x, t, model, **model_kwargs: \
-                    x
+            last_step_fn = lambda x, t, model, **model_kwargs: x
         elif last_step == "Mean":
-            last_step_fn = \
-                lambda x, t, model, **model_kwargs: \
-                    x - sde_drift(x, t, model, **model_kwargs) * last_step_size
+            last_step_fn = (
+                lambda x, t, model, **model_kwargs: x
+                - sde_drift(x, t, model, **model_kwargs) * last_step_size
+            )
         elif last_step == "Tweedie":
-            alpha = self.transport.path_sampler.compute_alpha_t # simple aliasing; the original name was too long
+            alpha = (
+                self.transport.path_sampler.compute_alpha_t
+            )  # simple aliasing; the original name was too long
             sigma = self.transport.path_sampler.compute_sigma_t
-            last_step_fn = \
-                lambda x, t, model, **model_kwargs: \
-                    x / alpha(t)[0][0] + (sigma(t)[0][0] ** 2) / alpha(t)[0][0] * self.score(x, t, model, **model_kwargs)
+            last_step_fn = lambda x, t, model, **model_kwargs: x / alpha(t)[0][0] + (
+                sigma(t)[0][0] ** 2
+            ) / alpha(t)[0][0] * self.score(x, t, model, **model_kwargs)
         elif last_step == "Euler":
-            last_step_fn = \
-                lambda x, t, model, **model_kwargs: \
-                    x - self.drift(x, t, model, **model_kwargs) * last_step_size
+            last_step_fn = (
+                lambda x, t, model, **model_kwargs: x
+                - self.drift(x, t, model, **model_kwargs) * last_step_size
+            )
         else:
             raise NotImplementedError()
 
@@ -392,8 +407,9 @@ class Sampler:
             time_dist_shift=self.transport.time_dist_shift,
         )
 
-        last_step_fn = self.__get_last_step(sde_drift, last_step=last_step, last_step_size=last_step_size)
-            
+        last_step_fn = self.__get_last_step(
+            sde_drift, last_step=last_step, last_step_size=last_step_size
+        )
 
         def _sample(init, model, **model_kwargs):
             xs = _sde.sample(init, model, **model_kwargs)
@@ -406,7 +422,7 @@ class Sampler:
             return xs
 
         return _sample
-    
+
     def sample_ode(
         self,
         *,
@@ -419,7 +435,7 @@ class Sampler:
         """returns a sampling function with given ODE settings
         Args:
         - sampling_method: type of sampler used in solving the ODE; default to be Dopri5
-        - num_steps: 
+        - num_steps:
             - fixed solver (Euler, Heun): the actual number of integration steps performed
             - adaptive solver (Dopri5): the number of datapoints saved during integration; produced by interpolation
         - atol: absolute error tolerance for the solver
@@ -427,7 +443,9 @@ class Sampler:
         - reverse: whether solving the ODE in reverse (data to noise); default to False
         """
         if reverse:
-            drift = lambda x, t, model, **kwargs: self.drift(x, th.ones_like(t) * (1 - t), model, **kwargs)
+            drift = lambda x, t, model, **kwargs: self.drift(
+                x, th.ones_like(t) * (1 - t), model, **kwargs
+            )
         else:
             drift = self.drift
 
@@ -450,5 +468,5 @@ class Sampler:
             rtol=rtol,
             time_dist_shift=self.transport.time_dist_shift,
         )
-        
+
         return _ode.sample
