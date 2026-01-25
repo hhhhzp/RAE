@@ -53,16 +53,10 @@ class FeatureAlignmentLoss(nn.Module):
             B, N, C = image_features.shape
             H = W = int(N**0.5)
             image_features = image_features.reshape(B, H, W, C).permute(0, 3, 1, 2)
-            # Pixel shuffle: [B, C, H, W] -> [B, C*4, H/2, W/2]
+            # Pixel unshuffle: [B, C, H, W] -> [B, C*4, H/2, W/2]
             image_features = F.pixel_unshuffle(image_features, downscale_factor=2)
-            B, C_new, H_new, W_new = image_features.shape
-            M = H_new * W_new
-            C_final = C_new // 4
-            image_features = image_features.reshape(B, 4, C_final, H_new, W_new)
-            image_features = image_features.permute(0, 3, 4, 1, 2).reshape(
-                B, M, C_final
-            )
-        return image_features
+            image_features = image_features.flatten(2, 3)
+        return image_features.permute(0, 2, 1)
 
     def forward(self, images, pred_features):
         """
