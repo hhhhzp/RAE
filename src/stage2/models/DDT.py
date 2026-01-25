@@ -400,11 +400,11 @@ class DiTwDDTHead(nn.Module):
             # print(f"t shape: {t.shape}, y shape: {y.shape}, c shape: {c.shape}, s shape: {s.shape}, pos_embed shape: {self.pos_embed.shape}")
             for i in range(self.num_encoder_blocks):
                 s = self.blocks[i](s, c, feat_rope=self.enc_feat_rope)
-                if i == self.align_layer - 1 and return_feature:
-                    feature = self.proj(s)
             # broadcast t to s
             t = t.unsqueeze(1).repeat(1, s.shape[1], 1)
             s = nn.functional.silu(t + s)
+        if return_feature:
+            feature = self.proj(s)
         s = self.s_projector(s)
         x = self.x_embedder(x)
         if self.use_pos_embed and self.x_pos_embed is not None:
