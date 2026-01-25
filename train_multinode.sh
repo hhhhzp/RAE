@@ -12,8 +12,8 @@
 export NCCL_IB_DISABLE=0
 export NCCL_SOCKET_IFNAME=bond1
 export SETUPTOOLS_USE_DISTUTILS=stdlib
-export WANDB_RESUME=auto
-export WANDB_RUN_ID=88467262
+# export WANDB_RESUME=auto
+# export WANDB_RUN_ID=88467262
 export http_proxy="http://star-proxy.oa.com:3128"
 export https_proxy="http://star-proxy.oa.com:3128"
 export MASTER_ADDR=${MASTER_ADDR:-"29.111.44.202"}
@@ -26,12 +26,12 @@ export NODE_RANK=${NODE_RANK:-0}
 export WANDB_KEY='704a2d2634e43e681d6187f3b7c875f26cce2eec'
 export ENTITY="zhenpenghuang"
 export PROJECT="RAE"
-export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE_2B"}
+export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE_2B_REPA"}
 
 # Training configuration
 CONFIG_PATH=${CONFIG_PATH:-"configs/stage2/training/ImageNet256/DiTDH-XL_DINOv2-B.yaml"}
 DATA_PATH=${DATA_PATH:-"/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k"}
-RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2"}
+RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2_repa"}
 PRECISION=${PRECISION:-"fp32"}
 
 # Launch training with torchrun

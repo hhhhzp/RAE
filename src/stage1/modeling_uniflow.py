@@ -1793,22 +1793,19 @@ class UniFlowVisionModel(PreTrainedModel):
             x.min() >= 0 and x.max() <= 1
         ), f'Input should be in [0, 1], got range [{x.min()}, {x.max()}]'
 
-        # Apply padding if dimensions are not divisible by 28
+        # Resize to nearest multiple of 28 if dimensions are not divisible by 28
         _, _, h, w = x.shape
-        pad_h = (28 - h % 28) % 28
-        pad_w = (28 - w % 28) % 28
+        target_h = (h // 28) * 28
+        target_w = (w // 28) * 28
 
-        if pad_h > 0 or pad_w > 0:
-            # Apply uniform padding on all sides
-            pad_top = pad_h // 2
-            pad_bottom = pad_h - pad_top
-            pad_left = pad_w // 2
-            pad_right = pad_w - pad_left
-            x = torch.nn.functional.pad(
+        if target_h != h or target_w != w:
+            # Resize to nearest smaller multiple of 28
+            x = torch.nn.functional.interpolate(
                 x,
-                (pad_left, pad_right, pad_top, pad_bottom),
-                mode='constant',
-                value=0,
+                size=(target_h, target_w),
+                mode='bilinear',
+                align_corners=False,
+                antialias=True,
             )
 
         # Convert [0, 1] to [-1, 1] for forward_encoder
@@ -1834,7 +1831,7 @@ class UniFlowVisionModel(PreTrainedModel):
 
         Args:
             latent: Latent tensor [B, C', H', W'] where C' = latent_ch (256)
-            target_size: Optional (H, W) tuple to crop the output to original size.
+            target_size: Optional (H, W) tuple to interpolate the output to original size.
                         If None, will auto-infer from latent size (assumes 256 or 512 square images)
 
         Returns:
@@ -1858,26 +1855,28 @@ class UniFlowVisionModel(PreTrainedModel):
         # Auto-infer target size if not provided (for 256 or 512 square images)
         if target_size is None:
             _, _, h, w = reconstructed_image.shape
-            # Latent size mapping: 256->280->10, 512->532->19
-            # Reverse: 10->280->256, 19->532->512
-            if H == 10 and W == 10:
+            # Latent size mapping: 256->252->9, 512->504->18
+            # Reverse: 9->252->256, 18->504->512
+            if H == 9 and W == 9:
                 target_size = (256, 256)
-            elif H == 19 and W == 19:
+            elif H == 18 and W == 18:
                 target_size = (512, 512)
-            # If latent size doesn't match known patterns, skip cropping
+            # If latent size doesn't match known patterns, skip interpolation
             else:
                 return reconstructed_image
 
-        # Crop to target size (to remove padding)
+        # Interpolate to target size
         target_h, target_w = target_size
         _, _, h, w = reconstructed_image.shape
 
-        # Calculate crop offsets (center crop)
-        crop_top = (h - target_h) // 2
-        crop_left = (w - target_w) // 2
-        reconstructed_image = reconstructed_image[
-            :, :, crop_top : crop_top + target_h, crop_left : crop_left + target_w
-        ]
+        if h != target_h or w != target_w:
+            reconstructed_image = torch.nn.functional.interpolate(
+                reconstructed_image,
+                size=(target_h, target_w),
+                mode='bilinear',
+                align_corners=False,
+                antialias=True,
+            )
 
         return reconstructed_image
 

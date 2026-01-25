@@ -44,6 +44,7 @@ from omegaconf import OmegaConf
 from stage1 import RAE
 from stage2.models import Stage2ModelProtocol
 from stage2.transport import create_transport, Sampler
+from stage2.losses import FeatureAlignmentLoss
 
 ##### general utils
 from utils import wandb_utils
@@ -352,6 +353,25 @@ def main():
             logger.warning(
                 f"Test image not found at {test_img_path}, skipping RAE test."
             )
+
+    # Initialize feature alignment loss
+    feature_alignment_loss = FeatureAlignmentLoss(
+        encoder_name="facebook/dinov2-with-registers-base", device=device
+    )
+    logger.info("Initialized FeatureAlignmentLoss with DINOv2 encoder")
+
+    # Compile feature alignment loss for better performance
+    if args.compile:
+        try:
+            feature_alignment_loss.forward = torch.compile(
+                feature_alignment_loss.forward
+            )
+            logger.info("Successfully compiled FeatureAlignmentLoss.forward")
+        except Exception as e:
+            logger.warning(
+                f"Failed to compile FeatureAlignmentLoss.forward: {e}, falling back to no compile"
+            )
+
     model: Stage2ModelProtocol = instantiate_from_config(model_config).to(device)
     if args.compile:
         # try:
@@ -481,6 +501,7 @@ def main():
 
     log_steps = 0
     running_loss = 0.0
+    running_feat_loss = 0.0
     start_time = time()
     use_guidance = guidance_scale > 1.0
     zs = torch.randn(
@@ -596,9 +617,16 @@ def main():
             optimizer.zero_grad(set_to_none=True)
             model_kwargs = dict(y=labels)
             with autocast(**autocast_kwargs):
-                loss = transport.training_losses(ddp_model, z, model_kwargs)[
-                    "loss"
-                ].mean()
+                terms = transport.training_losses(ddp_model, z, model_kwargs)
+                loss = terms["loss"].mean()
+
+                # Feature alignment loss
+                feat_loss_val = 0.0
+                if not args.use_cached_latents:
+                    pred_features = terms["feature"]  # [B, M, C]
+                    feat_loss = feature_alignment_loss(images_or_latents, pred_features)
+                    feat_loss_val = feat_loss.item()
+                    loss = loss + feat_loss
             loss.float()
             if scaler:
                 scaler.scale(loss / grad_accum_steps).backward()
@@ -618,7 +646,10 @@ def main():
                     scheduler.step()
                 update_ema(ema_model, ddp_model.module, decay=ema_decay)
             running_loss += loss.item()
+            running_feat_loss += feat_loss_val
             epoch_metrics['loss'] += loss.detach()
+            if not args.use_cached_latents:
+                epoch_metrics['feat_loss'] += feat_loss_val
 
             if log_interval > 0 and global_step % log_interval == 0 and rank == 0:
                 avg_loss = (
@@ -629,6 +660,9 @@ def main():
                     "train/loss": avg_loss,
                     "train/lr": optimizer.param_groups[0]["lr"],
                 }
+                if not args.use_cached_latents:
+                    avg_feat_loss = running_feat_loss / log_interval
+                    stats["train/feat_loss"] = avg_feat_loss
                 logger.info(
                     f"[Epoch {epoch} | Step {global_step}] "
                     + ", ".join(f"{k}: {v:.4f}" for k, v in stats.items())
@@ -639,6 +673,7 @@ def main():
                         step=global_step,
                     )
                 running_loss = 0.0
+                running_feat_loss = 0.0
             if global_step % sample_every == 0:
                 model.eval()
                 logger.info("Generating EMA samples...")
@@ -704,6 +739,9 @@ def main():
             epoch_stats = {
                 "epoch/loss": avg_loss,
             }
+            if not args.use_cached_latents and 'feat_loss' in epoch_metrics:
+                avg_feat_loss = epoch_metrics['feat_loss'].item() / num_batches
+                epoch_stats["epoch/feat_loss"] = avg_feat_loss
             logger.info(
                 f"[Epoch {epoch}] "
                 + ", ".join(f"{k}: {v:.4f}" for k, v in epoch_stats.items())

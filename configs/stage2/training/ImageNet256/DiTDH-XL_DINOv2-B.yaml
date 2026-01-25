@@ -55,9 +55,9 @@ guidance:
   t_max: 1.0
 
 misc:
-  latent_size: [256, 10, 10] # [C, H, W]
+  latent_size: [256, 9, 9] # [C, H, W]
   num_classes: 1000
-  time_dist_shift_dim: 25600 # 16*16*768
+  time_dist_shift_dim: 20736 # 16*16*768
   time_dist_shift_base: 4096
   
 eval:

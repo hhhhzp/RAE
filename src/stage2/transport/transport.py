@@ -202,12 +202,13 @@ class Transport:
 
         t, x0, x1 = self.sample(x1)
         t, xt, ut = self.path_sampler.plan(t, x0, x1)
-        model_output = model(xt, t, **model_kwargs)
+        model_output, feature = model(xt, t, **model_kwargs, return_feature=True)
         B, *_, C = xt.shape
         assert model_output.size() == (B, *xt.size()[1:-1], C)
 
         terms = {}
         terms['pred'] = model_output
+        terms['feature'] = feature
         if self.model_type == ModelType.VELOCITY:
             terms['loss'] = mean_flat(((model_output - ut) ** 2))
         else:
