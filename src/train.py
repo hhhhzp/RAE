@@ -356,7 +356,8 @@ def main():
 
     # Initialize feature alignment loss
     feature_alignment_loss = FeatureAlignmentLoss(
-        encoder_name="facebook/dinov2-with-registers-base", device=device
+        encoder_name="/apdcephfs_sh2/share_300000800/data/multimodal/models/dinov2-with-registers-base",
+        device=device,
     )
     logger.info("Initialized FeatureAlignmentLoss with DINOv2 encoder")
 
