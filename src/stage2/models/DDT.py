@@ -320,9 +320,9 @@ class DiTwDDTHead(nn.Module):
         )
         self.proj = nn.Sequential(
             nn.Sequential(
-                nn.Linear(self.encoder_hidden_size, 768 * 4),
+                nn.Linear(self.encoder_hidden_size, 768),
                 nn.SiLU(),
-                nn.Linear(768 * 4, 768 * 4),
+                nn.Linear(768, 768),
             )
         )
         self.align_layer = 7

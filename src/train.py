@@ -502,6 +502,7 @@ def main():
 
     log_steps = 0
     running_loss = 0.0
+    running_flow_loss = 0.0
     running_feat_loss = 0.0
     start_time = time()
     use_guidance = guidance_scale > 1.0
@@ -619,7 +620,8 @@ def main():
             model_kwargs = dict(y=labels)
             with autocast(**autocast_kwargs):
                 terms = transport.training_losses(ddp_model, z, model_kwargs)
-                loss = terms["loss"].mean()
+                flow_loss = terms["loss"].mean()
+                flow_loss_val = flow_loss.item()
 
                 # Feature alignment loss
                 feat_loss_val = 0.0
@@ -627,7 +629,9 @@ def main():
                     pred_features = terms["feature"]  # [B, M, C]
                     feat_loss = feature_alignment_loss(images_or_latents, pred_features)
                     feat_loss_val = feat_loss.item()
-                    loss = loss + feat_loss
+                    loss = flow_loss + feat_loss
+                else:
+                    loss = flow_loss
             loss.float()
             if scaler:
                 scaler.scale(loss / grad_accum_steps).backward()
@@ -647,18 +651,20 @@ def main():
                     scheduler.step()
                 update_ema(ema_model, ddp_model.module, decay=ema_decay)
             running_loss += loss.item()
+            running_flow_loss += flow_loss_val
             running_feat_loss += feat_loss_val
             epoch_metrics['loss'] += loss.detach()
+            epoch_metrics['flow_loss'] += flow_loss_val
             if not args.use_cached_latents:
                 epoch_metrics['feat_loss'] += feat_loss_val
 
             if log_interval > 0 and global_step % log_interval == 0 and rank == 0:
-                avg_loss = (
-                    running_loss / log_interval
-                )  # flow loss often has large variance so we record avg loss
+                avg_loss = running_loss / log_interval
+                avg_flow_loss = running_flow_loss / log_interval
                 steps = torch.tensor(log_interval, device=device)
                 stats = {
                     "train/loss": avg_loss,
+                    "train/flow_loss": avg_flow_loss,
                     "train/lr": optimizer.param_groups[0]["lr"],
                 }
                 if not args.use_cached_latents:
@@ -674,6 +680,7 @@ def main():
                         step=global_step,
                     )
                 running_loss = 0.0
+                running_flow_loss = 0.0
                 running_feat_loss = 0.0
             if global_step % sample_every == 0:
                 model.eval()
@@ -737,8 +744,10 @@ def main():
             num_batches += 1
         if rank == 0 and num_batches > 0:
             avg_loss = epoch_metrics['loss'].item() / num_batches
+            avg_flow_loss = epoch_metrics['flow_loss'].item() / num_batches
             epoch_stats = {
                 "epoch/loss": avg_loss,
+                "epoch/flow_loss": avg_flow_loss,
             }
             if not args.use_cached_latents and 'feat_loss' in epoch_metrics:
                 avg_feat_loss = epoch_metrics['feat_loss'].item() / num_batches
