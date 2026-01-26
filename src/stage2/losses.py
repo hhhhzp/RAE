@@ -49,14 +49,15 @@ class FeatureAlignmentLoss(nn.Module):
             image_features = encoder_output.last_hidden_state[
                 :, self.unused_token_num :
             ]
-            # Reshape from [B, N, C] to [B, H, W, C] assuming square feature map
-            B, N, C = image_features.shape
-            H = W = int(N**0.5)
-            image_features = image_features.reshape(B, H, W, C).permute(0, 3, 1, 2)
-            # Pixel unshuffle: [B, C, H, W] -> [B, C*4, H/2, W/2]
-            image_features = F.pixel_unshuffle(image_features, downscale_factor=2)
-            image_features = image_features.flatten(2, 3)
-        return image_features.permute(0, 2, 1)
+        return image_features
+        # Reshape from [B, N, C] to [B, H, W, C] assuming square feature map
+        #     B, N, C = image_features.shape
+        #     H = W = int(N**0.5)
+        #     image_features = image_features.reshape(B, H, W, C).permute(0, 3, 1, 2)
+        #     # Pixel unshuffle: [B, C, H, W] -> [B, C*4, H/2, W/2]
+        #     image_features = F.pixel_unshuffle(image_features, downscale_factor=2)
+        #     image_features = image_features.flatten(2, 3)
+        # return image_features.permute(0, 2, 1)
 
     def forward(self, images, pred_features):
         """

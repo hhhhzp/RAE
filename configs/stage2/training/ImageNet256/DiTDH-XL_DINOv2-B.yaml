@@ -16,11 +16,11 @@ stage_1:
 stage_2:
   target: stage2.models.DDT.DiTwDDTHead
   params:
-    input_size: 9
+    input_size: 18
     patch_size: 1
-    in_channels: 256
-    hidden_size: [1152, 2048]
-    depth: [28, 2]
+    in_channels: 64
+    hidden_size: [1152, 1152]
+    depth: [22, 6]
     num_heads: [16, 16]
     mlp_ratio: 4.0
     class_dropout_prob: 0.1
@@ -55,7 +55,7 @@ guidance:
   t_max: 1.0
 
 misc:
-  latent_size: [256, 9, 9] # [C, H, W]
+  latent_size: [64, 18, 18] # [C, H, W]
   num_classes: 1000
   time_dist_shift_dim: 20736 # 16*16*768
   time_dist_shift_base: 4096

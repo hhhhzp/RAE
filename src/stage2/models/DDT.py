@@ -389,6 +389,9 @@ class DiTwDDTHead(nn.Module):
         return imgs
 
     def forward(self, x, t, y, s=None, mask=None, return_feature=False):
+        # x: (B, C, H, W) -> (B, C/4, H*2, W*2) using pixel_unshuffle
+        x = F.pixel_unshuffle(x, downscale_factor=2)
+
         # x = self.x_embedder(x) + self.pos_embed
         t = self.t_embedder(t)
         y = self.y_embedder(y, self.training)
@@ -413,6 +416,10 @@ class DiTwDDTHead(nn.Module):
             x = self.blocks[i](x, s, feat_rope=self.dec_feat_rope)
         x = self.final_layer(x, s)
         x = self.unpatchify(x)
+
+        # x: (B, C/4, H*2, W*2) -> (B, C, H*2, W*2) using pixel_shuffle
+        x = F.pixel_shuffle(x, upscale_factor=2)
+
         if return_feature:
             return x, feature
         else:

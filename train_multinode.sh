@@ -26,12 +26,12 @@ export NODE_RANK=${NODE_RANK:-0}
 export WANDB_KEY='704a2d2634e43e681d6187f3b7c875f26cce2eec'
 export ENTITY="zhenpenghuang"
 export PROJECT="RAE"
-export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE_2B_REPA"}
+export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE_2B_REPA_UPSCALE2X"}
 
 # Training configuration
 CONFIG_PATH=${CONFIG_PATH:-"configs/stage2/training/ImageNet256/DiTDH-XL_DINOv2-B.yaml"}
 DATA_PATH=${DATA_PATH:-"/apdcephfs/share_300000800/datamultimodal/zhenpeng_data/imagenet-1k"}
-RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2_repa"}
+RESULTS_DIR=${RESULTS_DIR:-"ckpts/stage2_repa_upscale2x"}
 PRECISION=${PRECISION:-"fp32"}
 
 # Launch training with torchrun
