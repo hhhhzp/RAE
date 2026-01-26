@@ -1821,7 +1821,7 @@ class UniFlowVisionModel(PreTrainedModel):
         B, N, C = shared_latent_tokens.shape
         H = W = int(N**0.5)
         latent = shared_latent_tokens.reshape(B, H, W, C).permute(0, 3, 1, 2)
-
+        latent = F.pixel_shuffle(latent, upscale_factor=2)
         return latent
 
     @torch.no_grad()
@@ -1838,7 +1838,7 @@ class UniFlowVisionModel(PreTrainedModel):
             x: Reconstructed image [B, 3, H, W] with values in [0, 1]
         """
         assert latent.ndim == 4, f'Expected 4D tensor, got shape: {latent.shape}'
-
+        latent = F.pixel_unshuffle(latent, downscale_factor=2)
         # Convert spatial format [B, C', H', W'] to tokens [B, N, C']
         B, C, H, W = latent.shape
         latent_tokens = latent.permute(0, 2, 3, 1).reshape(B, H * W, C)
