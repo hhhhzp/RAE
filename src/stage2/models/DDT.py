@@ -109,7 +109,7 @@ class LightningDDTBlock(nn.Module):
         self.attn = NormAttention(
             hidden_size,
             num_heads=num_heads,
-            qkv_bias=True,
+            qkv_bias=False,
             qk_norm=use_qknorm,
             use_rmsnorm=use_rmsnorm,
             **block_kwargs,
