@@ -26,7 +26,7 @@ export NODE_RANK=${NODE_RANK:-0}
 export WANDB_KEY='704a2d2634e43e681d6187f3b7c875f26cce2eec'
 export ENTITY="zhenpenghuang"
 export PROJECT="RAE"
-export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE_2B_REPA_UPSCALE2X"}
+export EXPERIMENT_NAME=${EXPERIMENT_NAME:-"RAE_2B_REPA_UPSCALE2x"}
 
 # Training configuration
 CONFIG_PATH=${CONFIG_PATH:-"configs/stage2/training/ImageNet256/DiTDH-XL_DINOv2-B.yaml"}
